@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tweak</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Tweak</h1>
+      <button id="options-btn" title="Settings" aria-label="Open settings">&#9881;</button>
+    </header>
+
+    <div class="input-section">
+      <textarea
+        id="prompt-input"
+        placeholder="Describe a change to this page..."
+        rows="3"
+        autofocus
+      ></textarea>
+      <button id="submit-btn">Apply</button>
+    </div>
+
+    <div id="status" class="status hidden"></div>
+
+    <div class="tabs">
+      <button class="tab-btn active" data-tab="recent">Recent Prompts</button>
+      <button class="tab-btn" data-tab="active">Active Tweaks</button>
+    </div>
+
+    <div id="tab-recent" class="tab-content">
+      <ul id="recent-list" class="item-list"></ul>
+      <p id="recent-empty" class="empty-msg hidden">No recent prompts yet.</p>
+    </div>
+
+    <div id="tab-active" class="tab-content hidden">
+      <ul id="tweaks-list" class="item-list"></ul>
+      <p id="tweaks-empty" class="empty-msg hidden">No tweaks for this site yet.</p>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

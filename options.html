@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Tweak — Settings</title>
+  <link rel="stylesheet" href="options.css" />
+</head>
+<body>
+  <div class="container">
+    <header>
+      <h1>Tweak</h1>
+      <p class="subtitle">Settings</p>
+    </header>
+
+    <section class="section">
+      <label for="api-key">Anthropic API Key</label>
+      <p class="hint">
+        Get your API key from
+        <a href="https://console.anthropic.com/" target="_blank" rel="noopener">console.anthropic.com</a>.
+      </p>
+      <div class="key-row">
+        <input
+          type="password"
+          id="api-key"
+          placeholder="sk-ant-..."
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <button id="toggle-visibility" title="Show/hide key">&#128065;</button>
+      </div>
+      <button id="save-btn">Save</button>
+      <p id="save-status" class="save-status hidden"></p>
+    </section>
+  </div>
+
+  <script src="options.js"></script>
+</body>
+</html>
