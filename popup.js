@@ -1,5 +1,5 @@
 let currentTabId = null;
-let currentTab = "recent";
+let currentTab = "active";
 
 async function init() {
   const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -16,10 +16,16 @@ function setupTabs() {
   document.querySelectorAll(".tab-btn").forEach((btn) => {
     btn.addEventListener("click", () => {
       currentTab = btn.dataset.tab;
-      document.querySelectorAll(".tab-btn").forEach((b) => b.classList.remove("active"));
+      document
+        .querySelectorAll(".tab-btn")
+        .forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
-      document.getElementById("tab-recent").classList.toggle("hidden", currentTab !== "recent");
-      document.getElementById("tab-active").classList.toggle("hidden", currentTab !== "active");
+      document
+        .getElementById("tab-recent")
+        .classList.toggle("hidden", currentTab !== "recent");
+      document
+        .getElementById("tab-active")
+        .classList.toggle("hidden", currentTab !== "active");
     });
   });
 }
@@ -49,7 +55,7 @@ async function submitTweak() {
 
   const btn = document.getElementById("submit-btn");
   btn.disabled = true;
-  showStatus("loading", "Generating tweak...");
+  btn.textContent = "Tweaking...";
 
   try {
     const response = await chrome.runtime.sendMessage({
@@ -60,15 +66,21 @@ async function submitTweak() {
 
     if (response?.error) {
       showStatus("error", response.error);
+      btn.textContent = "Apply";
+      btn.disabled = false;
     } else {
-      showStatus("success", "Tweak applied!");
+      btn.textContent = "Tweaked";
       input.value = "";
       await loadRecentPrompts();
       await loadActiveTweaks();
+      setTimeout(() => {
+        btn.textContent = "Apply";
+        btn.disabled = false;
+      }, 1000);
     }
   } catch (err) {
     showStatus("error", err.message || "Something went wrong.");
-  } finally {
+    btn.textContent = "Apply";
     btn.disabled = false;
   }
 }
@@ -77,15 +89,14 @@ function showStatus(type, message) {
   const el = document.getElementById("status");
   el.className = `status ${type}`;
   el.textContent = message;
-  if (type === "success") {
-    setTimeout(() => {
-      el.className = "status hidden";
-    }, 3000);
-  }
+  setTimeout(() => {
+    el.className = "status hidden";
+  }, 4000);
 }
 
 async function loadRecentPrompts() {
-  const { recentPrompts = [] } = await chrome.storage.local.get("recentPrompts");
+  const { recentPrompts = [] } =
+    await chrome.storage.local.get("recentPrompts");
   const list = document.getElementById("recent-list");
   const empty = document.getElementById("recent-empty");
 
@@ -116,7 +127,9 @@ async function loadActiveTweaks() {
 
   let tweaks = [];
   try {
-    tweaks = await chrome.tabs.sendMessage(currentTabId, { type: "GET_TWEAKS" });
+    tweaks = await chrome.tabs.sendMessage(currentTabId, {
+      type: "GET_TWEAKS",
+    });
   } catch {
     // Content script not available on this page (e.g. chrome:// URLs)
   }
@@ -155,9 +168,15 @@ function createTweakItem(tweak) {
       enabled: checkbox.checked,
     });
     if (checkbox.checked) {
-      await chrome.scripting.insertCSS({ target: { tabId: currentTabId }, css: tweak.code });
+      await chrome.scripting.insertCSS({
+        target: { tabId: currentTabId },
+        css: tweak.code,
+      });
     } else {
-      await chrome.scripting.removeCSS({ target: { tabId: currentTabId }, css: tweak.code });
+      await chrome.scripting.removeCSS({
+        target: { tabId: currentTabId },
+        css: tweak.code,
+      });
     }
     li.classList.toggle("disabled", !checkbox.checked);
   });
@@ -176,7 +195,9 @@ function createTweakItem(tweak) {
       type: "DELETE_TWEAK",
       id: tweak.id,
     });
-    await chrome.scripting.removeCSS({ target: { tabId: currentTabId }, css: tweak.code }).catch(() => {});
+    await chrome.scripting
+      .removeCSS({ target: { tabId: currentTabId }, css: tweak.code })
+      .catch(() => {});
     li.remove();
     const list = document.getElementById("tweaks-list");
     if (list.children.length === 0) {
