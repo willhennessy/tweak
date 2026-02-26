@@ -10,6 +10,15 @@ async function init() {
   setupOptions();
   await loadRecentPrompts();
   await loadActiveTweaks();
+  await checkPickerError();
+}
+
+async function checkPickerError() {
+  const { pickerError } = await chrome.storage.local.get("pickerError");
+  if (pickerError && pickerError.tabId === currentTabId) {
+    await chrome.storage.local.remove("pickerError");
+    showStatus("error", pickerError.message);
+  }
 }
 
 function setupTabs() {
@@ -38,9 +47,11 @@ function setupOptions() {
 
 function setupSubmit() {
   const input = document.getElementById("prompt-input");
-  const btn = document.getElementById("submit-btn");
+  const applyBtn = document.getElementById("apply-btn");
+  const pickBtn = document.getElementById("pick-btn");
 
-  btn.addEventListener("click", submitTweak);
+  applyBtn.addEventListener("click", submitTweak);
+  pickBtn.addEventListener("click", startPicker);
   input.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       submitTweak();
@@ -53,7 +64,7 @@ async function submitTweak() {
   const prompt = input.value.trim();
   if (!prompt) return;
 
-  const btn = document.getElementById("submit-btn");
+  const btn = document.getElementById("apply-btn");
   btn.disabled = true;
   const { defaultProvider = "anthropic" } = await chrome.storage.local.get("defaultProvider");
   const providerName = defaultProvider === "codex" ? "Codex" : "Claude";
@@ -68,23 +79,42 @@ async function submitTweak() {
 
     if (response?.error) {
       showStatus("error", response.error);
-      btn.textContent = "Apply";
+      btn.textContent = "Apply to page";
       btn.disabled = false;
     } else {
-      btn.textContent = "Tweaked";
+      btn.textContent = "Tweaked!";
       input.value = "";
       await loadRecentPrompts();
       await loadActiveTweaks();
       setTimeout(() => {
-        btn.textContent = "Apply";
+        btn.textContent = "Apply to page";
         btn.disabled = false;
       }, 1000);
     }
   } catch (err) {
     showStatus("error", err.message || "Something went wrong.");
-    btn.textContent = "Apply";
+    btn.textContent = "Apply to page";
     btn.disabled = false;
   }
+}
+
+async function startPicker() {
+  const input = document.getElementById("prompt-input");
+  const prompt = input.value.trim();
+  if (!prompt) return;
+
+  const pickBtn = document.getElementById("pick-btn");
+  pickBtn.disabled = true;
+  pickBtn.querySelector(".btn-sublabel").textContent = "";
+  pickBtn.childNodes[0].textContent = "Selecting...";
+
+  await chrome.runtime.sendMessage({
+    type: "START_PICKER",
+    prompt,
+    tabId: currentTabId,
+  });
+
+  window.close();
 }
 
 function showStatus(type, message) {

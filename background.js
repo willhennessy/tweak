@@ -1,9 +1,10 @@
 chrome.runtime.onInstalled.addListener(async () => {
-  const { anthropicApiKey, codexApiKey, apiKey } = await chrome.storage.local.get([
-    "anthropicApiKey",
-    "codexApiKey",
-    "apiKey",
-  ]);
+  const { anthropicApiKey, codexApiKey, apiKey } =
+    await chrome.storage.local.get([
+      "anthropicApiKey",
+      "codexApiKey",
+      "apiKey",
+    ]);
 
   // Migrate legacy apiKey to anthropicApiKey
   if (apiKey && !anthropicApiKey) {
@@ -31,28 +32,144 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   const domainTweaks = (tweaks[domain] || []).filter((t) => t.enabled);
 
   for (const tweak of domainTweaks) {
-    await chrome.scripting.insertCSS({
-      target: { tabId },
-      css: tweak.code,
-    }).catch(() => {}); // ignore e.g. chrome:// pages
+    await chrome.scripting
+      .insertCSS({
+        target: { tabId },
+        css: tweak.code,
+      })
+      .catch(() => {}); // ignore e.g. chrome:// pages
   }
 });
+
+let pendingPick = null;
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === "APPLY_TWEAK") {
-    handleApplyTweak(message).then(sendResponse).catch((err) => {
-      sendResponse({ error: err.message });
-    });
+    handleApplyTweak(message)
+      .then(sendResponse)
+      .catch((err) => {
+        sendResponse({ error: err.message });
+      });
     return true; // keep channel open for async response
+  }
+
+  if (message.type === "START_PICKER") {
+    const { tabId, prompt } = message;
+    pendingPick = { tabId, prompt };
+    chrome.tabs.sendMessage(tabId, { type: "START_PICKER" }).catch(() => {});
+    sendResponse({ ok: true });
+    return false;
+  }
+
+  if (message.type === "ELEMENT_SELECTED") {
+    if (!pendingPick) return false;
+    const { tabId, prompt } = pendingPick;
+    pendingPick = null;
+    handlePickerResult(tabId, prompt, message).catch(() => {});
+    return false;
   }
 });
 
-async function handleApplyTweak({ prompt, tabId }) {
-  const { anthropicApiKey = "", codexApiKey = "", defaultProvider = "anthropic" } =
-    await chrome.storage.local.get(["anthropicApiKey", "codexApiKey", "defaultProvider"]);
+function setBadge(tabId, text, color) {
+  chrome.action.setBadgeText({ text, tabId });
+  chrome.action.setBadgeBackgroundColor({ color, tabId });
+}
+
+function clearBadge(tabId) {
+  chrome.action.setBadgeText({ text: "", tabId });
+}
+
+async function handlePickerResult(
+  tabId,
+  prompt,
+  { simplifiedHTML, selectorPath },
+) {
+  const {
+    anthropicApiKey = "",
+    codexApiKey = "",
+    defaultProvider = "anthropic",
+  } = await chrome.storage.local.get([
+    "anthropicApiKey",
+    "codexApiKey",
+    "defaultProvider",
+  ]);
 
   if (!anthropicApiKey && !codexApiKey) {
-    throw new Error("No API key set. Please configure it in the extension options.");
+    await chrome.storage.local.set({
+      pickerError: {
+        tabId,
+        message:
+          "No API key set. Please configure it in the extension options.",
+      },
+    });
+    try {
+      await chrome.action.openPopup();
+    } catch {}
+    return;
+  }
+
+  setBadge(tabId, "...", "#3b82f6");
+
+  try {
+    const code = await callAPIWithFallback(
+      anthropicApiKey,
+      codexApiKey,
+      defaultProvider,
+      null,
+      prompt,
+      { simplifiedHTML, selectorPath },
+    );
+
+    console.log("[Tweak] Output:", code);
+
+    await chrome.scripting.insertCSS({ target: { tabId }, css: code });
+
+    const tab = await chrome.tabs.get(tabId);
+    const domain = new URL(tab.url).hostname;
+    const { tweaks = {} } = await chrome.storage.local.get("tweaks");
+    const domainTweaks = tweaks[domain] || [];
+    const id = crypto.randomUUID();
+    domainTweaks.push({
+      id,
+      prompt,
+      code,
+      enabled: true,
+      createdAt: Date.now(),
+    });
+    tweaks[domain] = domainTweaks;
+    await chrome.storage.local.set({ tweaks });
+    await saveRecentPrompt(prompt);
+
+    setBadge(tabId, "✓", "#16a34a");
+    setTimeout(() => clearBadge(tabId), 1000);
+  } catch (err) {
+    clearBadge(tabId);
+    await chrome.storage.local.set({
+      pickerError: { tabId, message: err.message },
+    });
+    try {
+      await chrome.action.openPopup();
+    } catch {
+      // chrome.action.openPopup() requires Chrome 127+ and user gesture; error stored for manual reopen
+    }
+  }
+}
+
+async function handleApplyTweak({ prompt, tabId }) {
+  const {
+    anthropicApiKey = "",
+    codexApiKey = "",
+    defaultProvider = "anthropic",
+  } = await chrome.storage.local.get([
+    "anthropicApiKey",
+    "codexApiKey",
+    "defaultProvider",
+  ]);
+
+  if (!anthropicApiKey && !codexApiKey) {
+    throw new Error(
+      "No API key set. Please configure it in the extension options.",
+    );
   }
 
   // Extract a compact DOM skeleton: tags + identifying attributes, no content or SVGs.
@@ -60,28 +177,48 @@ async function handleApplyTweak({ prompt, tabId }) {
   const [{ result: domTree }] = await chrome.scripting.executeScript({
     target: { tabId },
     func: () => {
-      const SKIP = new Set(['script', 'style', 'svg', 'noscript', 'head']);
-      const ID_ATTRS = ['id', 'class', 'aria-label', 'data-testid', 'role', 'name', 'type', 'slot', 'placeholder'];
+      const SKIP = new Set(["script", "style", "svg", "noscript", "head"]);
+      const ID_ATTRS = [
+        "id",
+        "class",
+        "aria-label",
+        "data-testid",
+        "role",
+        "name",
+        "type",
+        "slot",
+        "placeholder",
+      ];
       function simplify(node, depth) {
-        if (depth > 15 || node.nodeType !== 1) return '';
+        if (depth > 15 || node.nodeType !== 1) return "";
         const tag = node.tagName.toLowerCase();
-        if (SKIP.has(tag)) return '';
-        const attrs = ID_ATTRS
-          .map(a => { const v = node.getAttribute(a); return v ? ` ${a}="${v}"` : ''; })
-          .join('');
-        const children = Array.from(node.children).map(c => simplify(c, depth + 1)).filter(Boolean).join('');
+        if (SKIP.has(tag)) return "";
+        const attrs = ID_ATTRS.map((a) => {
+          const v = node.getAttribute(a);
+          return v ? ` ${a}="${v}"` : "";
+        }).join("");
+        const children = Array.from(node.children)
+          .map((c) => simplify(c, depth + 1))
+          .filter(Boolean)
+          .join("");
         return `<${tag}${attrs}>${children}</${tag}>`;
       }
       return simplify(document.documentElement, 0);
     },
   });
 
-  const code = await callAPIWithFallback(anthropicApiKey, codexApiKey, defaultProvider, domTree, prompt);
+  const code = await callAPIWithFallback(
+    anthropicApiKey,
+    codexApiKey,
+    defaultProvider,
+    domTree,
+    prompt,
+  );
 
   // Generate a unique ID for this tweak
   const id = crypto.randomUUID();
 
-  console.log('[Tweak] code:', code);
+  console.log("[Tweak] Output:", code);
 
   await chrome.scripting.insertCSS({
     target: { tabId },
@@ -103,7 +240,14 @@ async function handleApplyTweak({ prompt, tabId }) {
   return { success: true, id };
 }
 
-async function callAPIWithFallback(anthropicApiKey, codexApiKey, defaultProvider, outerHTML, prompt) {
+async function callAPIWithFallback(
+  anthropicApiKey,
+  codexApiKey,
+  defaultProvider,
+  outerHTML,
+  prompt,
+  elementContext = null,
+) {
   const primary = defaultProvider === "codex" ? "codex" : "anthropic";
   const fallback = primary === "anthropic" ? "codex" : "anthropic";
 
@@ -112,60 +256,110 @@ async function callAPIWithFallback(anthropicApiKey, codexApiKey, defaultProvider
 
   if (primaryKey) {
     try {
-      return await callAPI(primary, primaryKey, outerHTML, prompt);
+      return await callAPI(
+        primary,
+        primaryKey,
+        outerHTML,
+        prompt,
+        elementContext,
+      );
     } catch (err) {
       console.warn(`[Tweak] ${primary} API failed:`, err.message);
       if (fallbackKey) {
         console.log(`[Tweak] Falling back to ${fallback} API`);
-        return await callAPI(fallback, fallbackKey, outerHTML, prompt);
+        return await callAPI(
+          fallback,
+          fallbackKey,
+          outerHTML,
+          prompt,
+          elementContext,
+        );
       }
       throw err;
     }
   }
 
   // Primary key not set, try fallback directly
-  return await callAPI(fallback, fallbackKey, outerHTML, prompt);
+  return await callAPI(
+    fallback,
+    fallbackKey,
+    outerHTML,
+    prompt,
+    elementContext,
+  );
 }
 
-async function callAPI(provider, apiKey, outerHTML, prompt) {
+async function callAPI(
+  provider,
+  apiKey,
+  outerHTML,
+  prompt,
+  elementContext = null,
+) {
   if (provider === "anthropic") {
-    return callAnthropicAPI(apiKey, outerHTML, prompt);
+    return callAnthropicAPI(apiKey, outerHTML, prompt, elementContext);
   }
-  return callCodexAPI(apiKey, outerHTML, prompt);
+  return callCodexAPI(apiKey, outerHTML, prompt, elementContext);
 }
 
-const SYSTEM_PROMPT =
-  `You are a browser automation expert. The user is viewing a third-party webpage and wants a visual change applied via injected CSS.
+const SYSTEM_PROMPT = `You are a browser automation expert. The user is viewing a third-party webpage and wants a visual change applied via injected CSS.
 
-You will be given a compact DOM tree (tags and attributes only). Use it to find the exact element to target.
+You will be given either a compact DOM tree or a specific target element selected by the user. Use it to find the exact element to target.
 
 Your response must be RAW CSS ONLY — no words, no explanation, no markdown, no code fences, no <style> tags. Start immediately with the first selector.
 
 Rules:
 - Use the exact tag names, IDs, and classes you see in the provided DOM — do not guess or invent selectors
 - Prefer the most specific selector that uniquely identifies the element (e.g. custom element tag names like <recent-posts>, or #id selectors)
+- When a specific target element is provided with a selector path, use that element's tag name, ID, or classes directly. The selectorPath shows its position in the DOM for context.
 - Use !important on every property to override existing styles
 - CSS cannot select by text content — use tag names, IDs, classes, and attribute selectors instead
 - Example output: recent-posts { display: none !important; }`;
 
 // Extract only the CSS from the response, discarding any prose the model prepended
 function extractCSS(raw) {
-  const firstBrace = raw.indexOf('{');
+  const firstBrace = raw.indexOf("{");
   if (firstBrace === -1) return raw.trim();
-  const lineStart = raw.lastIndexOf('\n', firstBrace) + 1;
-  return raw.slice(lineStart).replace(/\n?```$/, '').trim();
+  const lineStart = raw.lastIndexOf("\n", firstBrace) + 1;
+  return raw
+    .slice(lineStart)
+    .replace(/\n?```$/, "")
+    .trim();
 }
 
-function buildUserContent(outerHTML, prompt) {
-  const maxDOMLength = 200000;
-  const truncatedHTML =
-    outerHTML.length > maxDOMLength
-      ? outerHTML.slice(0, maxDOMLength) + "\n<!-- DOM truncated for length -->"
-      : outerHTML;
-  return `Page DOM:\n${truncatedHTML}\n\nUser request: ${prompt}`;
+function buildUserContent(outerHTML, prompt, elementContext = null) {
+  let content;
+  let contextLabel;
+  let contextValue;
+  if (elementContext) {
+    const { simplifiedHTML, selectorPath } = elementContext;
+    content = `Target element (user-selected):\nSelector path: ${selectorPath}\n${simplifiedHTML}\n\nUser request: ${prompt}`;
+    contextLabel = "Target element: user-selected,";
+    contextValue = simplifiedHTML;
+  } else {
+    const maxDOMLength = 200000;
+    const truncatedHTML =
+      outerHTML.length > maxDOMLength
+        ? outerHTML.slice(0, maxDOMLength) +
+          "\n<!-- DOM truncated for length -->"
+        : outerHTML;
+    content = `Page DOM:\n${truncatedHTML}\n\nUser request: ${prompt}`;
+    contextLabel = "Page DOM:";
+    contextValue = truncatedHTML;
+  }
+  const estTokens = Math.round(content.length / 4);
+  console.log(`[Tweak] User request: ${prompt}`);
+  console.log(`[Tweak] Context tokens: ${estTokens}`);
+  console.log(`[Tweak] ${contextLabel}`, contextValue);
+  return content;
 }
 
-async function callAnthropicAPI(apiKey, outerHTML, prompt) {
+async function callAnthropicAPI(
+  apiKey,
+  outerHTML,
+  prompt,
+  elementContext = null,
+) {
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -181,7 +375,7 @@ async function callAnthropicAPI(apiKey, outerHTML, prompt) {
       messages: [
         {
           role: "user",
-          content: buildUserContent(outerHTML, prompt),
+          content: buildUserContent(outerHTML, prompt, elementContext),
         },
       ],
     }),
@@ -190,7 +384,8 @@ async function callAnthropicAPI(apiKey, outerHTML, prompt) {
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(
-      error.error?.message || `Anthropic API request failed with status ${response.status}`
+      error.error?.message ||
+        `Anthropic API request failed with status ${response.status}`,
     );
   }
 
@@ -198,12 +393,12 @@ async function callAnthropicAPI(apiKey, outerHTML, prompt) {
   return extractCSS(data.content[0].text);
 }
 
-async function callCodexAPI(apiKey, outerHTML, prompt) {
+async function callCodexAPI(apiKey, outerHTML, prompt, elementContext = null) {
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "Authorization": `Bearer ${apiKey}`,
+      Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
       model: "gpt-4o",
@@ -215,7 +410,7 @@ async function callCodexAPI(apiKey, outerHTML, prompt) {
         },
         {
           role: "user",
-          content: buildUserContent(outerHTML, prompt),
+          content: buildUserContent(outerHTML, prompt, elementContext),
         },
       ],
     }),
@@ -224,7 +419,8 @@ async function callCodexAPI(apiKey, outerHTML, prompt) {
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(
-      error.error?.message || `Codex API request failed with status ${response.status}`
+      error.error?.message ||
+        `Codex API request failed with status ${response.status}`,
     );
   }
 
@@ -233,7 +429,11 @@ async function callCodexAPI(apiKey, outerHTML, prompt) {
 }
 
 async function saveRecentPrompt(prompt) {
-  const { recentPrompts = [] } = await chrome.storage.local.get("recentPrompts");
-  const updated = [prompt, ...recentPrompts.filter((p) => p !== prompt)].slice(0, 10);
+  const { recentPrompts = [] } =
+    await chrome.storage.local.get("recentPrompts");
+  const updated = [prompt, ...recentPrompts.filter((p) => p !== prompt)].slice(
+    0,
+    10,
+  );
   await chrome.storage.local.set({ recentPrompts: updated });
 }
