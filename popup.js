@@ -55,7 +55,9 @@ async function submitTweak() {
 
   const btn = document.getElementById("submit-btn");
   btn.disabled = true;
-  btn.textContent = "Tweaking...";
+  const { defaultProvider = "anthropic" } = await chrome.storage.local.get("defaultProvider");
+  const providerName = defaultProvider === "codex" ? "Codex" : "Claude";
+  btn.textContent = `Tweaking with ${providerName}...`;
 
   try {
     const response = await chrome.runtime.sendMessage({

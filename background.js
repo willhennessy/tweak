@@ -55,13 +55,28 @@ async function handleApplyTweak({ prompt, tabId }) {
     throw new Error("No API key set. Please configure it in the extension options.");
   }
 
-  // Get the page DOM from the content script
-  const [{ result: outerHTML }] = await chrome.scripting.executeScript({
+  // Extract a compact DOM skeleton: tags + identifying attributes, no content or SVGs.
+  // This fits far more page structure into the token budget than raw outerHTML.
+  const [{ result: domTree }] = await chrome.scripting.executeScript({
     target: { tabId },
-    func: () => document.documentElement.outerHTML,
+    func: () => {
+      const SKIP = new Set(['script', 'style', 'svg', 'noscript', 'head']);
+      const ID_ATTRS = ['id', 'class', 'aria-label', 'data-testid', 'role', 'name', 'type', 'slot', 'placeholder'];
+      function simplify(node, depth) {
+        if (depth > 15 || node.nodeType !== 1) return '';
+        const tag = node.tagName.toLowerCase();
+        if (SKIP.has(tag)) return '';
+        const attrs = ID_ATTRS
+          .map(a => { const v = node.getAttribute(a); return v ? ` ${a}="${v}"` : ''; })
+          .join('');
+        const children = Array.from(node.children).map(c => simplify(c, depth + 1)).filter(Boolean).join('');
+        return `<${tag}${attrs}>${children}</${tag}>`;
+      }
+      return simplify(document.documentElement, 0);
+    },
   });
 
-  const code = await callAPIWithFallback(anthropicApiKey, codexApiKey, defaultProvider, outerHTML, prompt);
+  const code = await callAPIWithFallback(anthropicApiKey, codexApiKey, defaultProvider, domTree, prompt);
 
   // Generate a unique ID for this tweak
   const id = crypto.randomUUID();
@@ -122,18 +137,27 @@ async function callAPI(provider, apiKey, outerHTML, prompt) {
 const SYSTEM_PROMPT =
   `You are a browser automation expert. The user is viewing a third-party webpage and wants a visual change applied via injected CSS.
 
-Return ONLY a valid CSS ruleset — no JavaScript, no markdown, no code fences, no <style> tags. Just raw CSS rules.
+You will be given a compact DOM tree (tags and attributes only). Use it to find the exact element to target.
+
+Your response must be RAW CSS ONLY — no words, no explanation, no markdown, no code fences, no <style> tags. Start immediately with the first selector.
 
 Rules:
-- Use attribute selectors, class selectors, and structural selectors to target elements
-- Use [aria-label*="Follow"], [data-control-name="follow"], or class-based selectors to target elements by their label or purpose
-- CSS cannot select by text content — do not attempt it
+- Use the exact tag names, IDs, and classes you see in the provided DOM — do not guess or invent selectors
+- Prefer the most specific selector that uniquely identifies the element (e.g. custom element tag names like <recent-posts>, or #id selectors)
 - Use !important on every property to override existing styles
-- Use comma-separated selectors to cover multiple possible element variations
-- Example output: button[aria-label*="Follow"] { background-color: green !important; color: white !important; }`;
+- CSS cannot select by text content — use tag names, IDs, classes, and attribute selectors instead
+- Example output: recent-posts { display: none !important; }`;
+
+// Extract only the CSS from the response, discarding any prose the model prepended
+function extractCSS(raw) {
+  const firstBrace = raw.indexOf('{');
+  if (firstBrace === -1) return raw.trim();
+  const lineStart = raw.lastIndexOf('\n', firstBrace) + 1;
+  return raw.slice(lineStart).replace(/\n?```$/, '').trim();
+}
 
 function buildUserContent(outerHTML, prompt) {
-  const maxDOMLength = 100000;
+  const maxDOMLength = 200000;
   const truncatedHTML =
     outerHTML.length > maxDOMLength
       ? outerHTML.slice(0, maxDOMLength) + "\n<!-- DOM truncated for length -->"
@@ -171,8 +195,7 @@ async function callAnthropicAPI(apiKey, outerHTML, prompt) {
   }
 
   const data = await response.json();
-  const raw = data.content[0].text.trim();
-  return raw.replace(/^```(?:css)?\n?/, '').replace(/\n?```$/, '').trim();
+  return extractCSS(data.content[0].text);
 }
 
 async function callCodexAPI(apiKey, outerHTML, prompt) {
@@ -206,8 +229,7 @@ async function callCodexAPI(apiKey, outerHTML, prompt) {
   }
 
   const data = await response.json();
-  const raw = data.choices[0].message.content.trim();
-  return raw.replace(/^```(?:css)?\n?/, '').replace(/\n?```$/, '').trim();
+  return extractCSS(data.choices[0].message.content);
 }
 
 async function saveRecentPrompt(prompt) {
