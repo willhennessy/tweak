@@ -11,7 +11,6 @@ Examples:
 - Remove YouTube Shorts
 - Hide NSFW content
 - Customize Github functionality: <https://github.com/refined-github/refined-github>
-- Customize Github functionality: <https://github.com/refined-github/refined-github>
 - Change the font style
 - Reorder tabs in the navbar
 - Reorder sections of the website
