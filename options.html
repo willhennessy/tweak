@@ -14,7 +14,7 @@
     </header>
 
     <section class="section">
-      <label for="api-key">Anthropic API Key</label>
+      <label for="anthropic-key">Anthropic API Key</label>
       <p class="hint">
         Get your API key from
         <a href="https://console.anthropic.com/" target="_blank" rel="noopener">console.anthropic.com</a>.
@@ -22,16 +22,50 @@
       <div class="key-row">
         <input
           type="password"
-          id="api-key"
+          id="anthropic-key"
           placeholder="sk-ant-..."
           autocomplete="off"
           spellcheck="false"
         />
-        <button id="toggle-visibility" title="Show/hide key">&#128065;</button>
+        <button class="toggle-visibility" data-target="anthropic-key" title="Show/hide key">&#128065;</button>
       </div>
-      <button id="save-btn">Save</button>
-      <p id="save-status" class="save-status hidden"></p>
     </section>
+
+    <section class="section">
+      <label for="codex-key">Codex API Key</label>
+      <p class="hint">
+        Get your API key from
+        <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com</a>.
+      </p>
+      <div class="key-row">
+        <input
+          type="password"
+          id="codex-key"
+          placeholder="sk-..."
+          autocomplete="off"
+          spellcheck="false"
+        />
+        <button class="toggle-visibility" data-target="codex-key" title="Show/hide key">&#128065;</button>
+      </div>
+    </section>
+
+    <section class="section" id="default-provider-section" style="display:none">
+      <label>Default Provider</label>
+      <p class="hint">Both keys are configured. Choose which provider to use first. If it fails, the other will be used automatically.</p>
+      <div class="provider-options">
+        <label class="provider-option">
+          <input type="radio" name="default-provider" value="anthropic" />
+          <span>Anthropic</span>
+        </label>
+        <label class="provider-option">
+          <input type="radio" name="default-provider" value="codex" />
+          <span>Codex</span>
+        </label>
+      </div>
+    </section>
+
+    <button id="save-btn">Save</button>
+    <p id="save-status" class="save-status hidden"></p>
   </div>
 
   <script src="options.js"></script>

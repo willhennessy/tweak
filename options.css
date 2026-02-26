@@ -144,3 +144,23 @@ input:focus {
   color: #f87171;
   border: 1px solid #5a1a1a;
 }
+
+.provider-options {
+  display: flex;
+  gap: 16px;
+}
+
+.provider-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 400;
+  color: #ccc;
+  cursor: pointer;
+}
+
+.provider-option input[type="radio"] {
+  accent-color: #7eb8f7;
+  cursor: pointer;
+}

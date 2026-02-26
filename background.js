@@ -1,6 +1,18 @@
 chrome.runtime.onInstalled.addListener(async () => {
-  const { apiKey } = await chrome.storage.local.get("apiKey");
-  if (!apiKey) {
+  const { anthropicApiKey, codexApiKey, apiKey } = await chrome.storage.local.get([
+    "anthropicApiKey",
+    "codexApiKey",
+    "apiKey",
+  ]);
+
+  // Migrate legacy apiKey to anthropicApiKey
+  if (apiKey && !anthropicApiKey) {
+    await chrome.storage.local.set({ anthropicApiKey: apiKey });
+    await chrome.storage.local.remove("apiKey");
+  }
+
+  const hasKey = anthropicApiKey || codexApiKey || apiKey;
+  if (!hasKey) {
     chrome.runtime.openOptionsPage();
   }
 });
@@ -36,8 +48,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 });
 
 async function handleApplyTweak({ prompt, tabId }) {
-  const { apiKey } = await chrome.storage.local.get("apiKey");
-  if (!apiKey) {
+  const { anthropicApiKey = "", codexApiKey = "", defaultProvider = "anthropic" } =
+    await chrome.storage.local.get(["anthropicApiKey", "codexApiKey", "defaultProvider"]);
+
+  if (!anthropicApiKey && !codexApiKey) {
     throw new Error("No API key set. Please configure it in the extension options.");
   }
 
@@ -47,7 +61,7 @@ async function handleApplyTweak({ prompt, tabId }) {
     func: () => document.documentElement.outerHTML,
   });
 
-  const code = await callAnthropicAPI(apiKey, outerHTML, prompt);
+  const code = await callAPIWithFallback(anthropicApiKey, codexApiKey, defaultProvider, outerHTML, prompt);
 
   // Generate a unique ID for this tweak
   const id = crypto.randomUUID();
@@ -74,14 +88,60 @@ async function handleApplyTweak({ prompt, tabId }) {
   return { success: true, id };
 }
 
-async function callAnthropicAPI(apiKey, outerHTML, prompt) {
-  // Truncate DOM if too large (Anthropic has token limits)
+async function callAPIWithFallback(anthropicApiKey, codexApiKey, defaultProvider, outerHTML, prompt) {
+  const primary = defaultProvider === "codex" ? "codex" : "anthropic";
+  const fallback = primary === "anthropic" ? "codex" : "anthropic";
+
+  const primaryKey = primary === "anthropic" ? anthropicApiKey : codexApiKey;
+  const fallbackKey = fallback === "anthropic" ? anthropicApiKey : codexApiKey;
+
+  if (primaryKey) {
+    try {
+      return await callAPI(primary, primaryKey, outerHTML, prompt);
+    } catch (err) {
+      console.warn(`[Tweak] ${primary} API failed:`, err.message);
+      if (fallbackKey) {
+        console.log(`[Tweak] Falling back to ${fallback} API`);
+        return await callAPI(fallback, fallbackKey, outerHTML, prompt);
+      }
+      throw err;
+    }
+  }
+
+  // Primary key not set, try fallback directly
+  return await callAPI(fallback, fallbackKey, outerHTML, prompt);
+}
+
+async function callAPI(provider, apiKey, outerHTML, prompt) {
+  if (provider === "anthropic") {
+    return callAnthropicAPI(apiKey, outerHTML, prompt);
+  }
+  return callCodexAPI(apiKey, outerHTML, prompt);
+}
+
+const SYSTEM_PROMPT =
+  `You are a browser automation expert. The user is viewing a third-party webpage and wants a visual change applied via injected CSS.
+
+Return ONLY a valid CSS ruleset — no JavaScript, no markdown, no code fences, no <style> tags. Just raw CSS rules.
+
+Rules:
+- Use attribute selectors, class selectors, and structural selectors to target elements
+- Use [aria-label*="Follow"], [data-control-name="follow"], or class-based selectors to target elements by their label or purpose
+- CSS cannot select by text content — do not attempt it
+- Use !important on every property to override existing styles
+- Use comma-separated selectors to cover multiple possible element variations
+- Example output: button[aria-label*="Follow"] { background-color: green !important; color: white !important; }`;
+
+function buildUserContent(outerHTML, prompt) {
   const maxDOMLength = 100000;
   const truncatedHTML =
     outerHTML.length > maxDOMLength
       ? outerHTML.slice(0, maxDOMLength) + "\n<!-- DOM truncated for length -->"
       : outerHTML;
+  return `Page DOM:\n${truncatedHTML}\n\nUser request: ${prompt}`;
+}
 
+async function callAnthropicAPI(apiKey, outerHTML, prompt) {
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -93,22 +153,11 @@ async function callAnthropicAPI(apiKey, outerHTML, prompt) {
     body: JSON.stringify({
       model: "claude-sonnet-4-6",
       max_tokens: 4096,
-      system:
-        `You are a browser automation expert. The user is viewing a third-party webpage and wants a visual change applied via injected CSS.
-
-Return ONLY a valid CSS ruleset — no JavaScript, no markdown, no code fences, no <style> tags. Just raw CSS rules.
-
-Rules:
-- Use attribute selectors, class selectors, and structural selectors to target elements
-- Use [aria-label*="Follow"], [data-control-name="follow"], or class-based selectors to target elements by their label or purpose
-- CSS cannot select by text content — do not attempt it
-- Use !important on every property to override existing styles
-- Use comma-separated selectors to cover multiple possible element variations
-- Example output: button[aria-label*="Follow"] { background-color: green !important; color: white !important; }`,
+      system: SYSTEM_PROMPT,
       messages: [
         {
           role: "user",
-          content: `Page DOM:\n${truncatedHTML}\n\nUser request: ${prompt}`,
+          content: buildUserContent(outerHTML, prompt),
         },
       ],
     }),
@@ -117,14 +166,48 @@ Rules:
   if (!response.ok) {
     const error = await response.json().catch(() => ({}));
     throw new Error(
-      error.error?.message || `API request failed with status ${response.status}`
+      error.error?.message || `Anthropic API request failed with status ${response.status}`
     );
   }
 
   const data = await response.json();
   const raw = data.content[0].text.trim();
-  // Strip markdown code fences Claude sometimes adds despite instructions
-  return raw.replace(/^```(?:javascript|js)?\n?/, '').replace(/\n?```$/, '').trim();
+  return raw.replace(/^```(?:css)?\n?/, '').replace(/\n?```$/, '').trim();
+}
+
+async function callCodexAPI(apiKey, outerHTML, prompt) {
+  const response = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: "gpt-4o",
+      max_tokens: 4096,
+      messages: [
+        {
+          role: "system",
+          content: SYSTEM_PROMPT,
+        },
+        {
+          role: "user",
+          content: buildUserContent(outerHTML, prompt),
+        },
+      ],
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({}));
+    throw new Error(
+      error.error?.message || `Codex API request failed with status ${response.status}`
+    );
+  }
+
+  const data = await response.json();
+  const raw = data.choices[0].message.content.trim();
+  return raw.replace(/^```(?:css)?\n?/, '').replace(/\n?```$/, '').trim();
 }
 
 async function saveRecentPrompt(prompt) {
