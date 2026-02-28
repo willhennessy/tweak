@@ -32,12 +32,7 @@ chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   const domainTweaks = (tweaks[domain] || []).filter((t) => t.enabled);
 
   for (const tweak of domainTweaks) {
-    await chrome.scripting
-      .insertCSS({
-        target: { tabId },
-        css: tweak.code,
-      })
-      .catch(() => {}); // ignore e.g. chrome:// pages
+    await injectTweak(tabId, tweak).catch(() => {}); // ignore e.g. chrome:// pages
   }
 });
 
@@ -67,6 +62,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     pendingPick = null;
     handlePickerResult(tabId, prompt, message).catch(() => {});
     return false;
+  }
+
+  if (message.type === "INJECT_TWEAK") {
+    const { tabId, tweak } = message;
+    injectTweak(tabId, tweak)
+      .then(() => sendResponse({ ok: true }))
+      .catch((err) => sendResponse({ error: err.message }));
+    return true;
   }
 });
 
@@ -111,28 +114,31 @@ async function handlePickerResult(
   setBadge(tabId, "...", "#3b82f6");
 
   try {
-    const code = await callAPIWithFallback(
+    const tab = await chrome.tabs.get(tabId);
+    const domain = new URL(tab.url).hostname;
+
+    const { type, code } = await callAPIWithFallback(
       anthropicApiKey,
       codexApiKey,
       defaultProvider,
       null,
       prompt,
       { simplifiedHTML, selectorPath },
+      tab.url,
     );
 
-    console.log("[Tweak] Output:", code);
-
-    await chrome.scripting.insertCSS({ target: { tabId }, css: code });
-
-    const tab = await chrome.tabs.get(tabId);
-    const domain = new URL(tab.url).hostname;
+    console.log("[Tweak] Output:", { type, code });
     const { tweaks = {} } = await chrome.storage.local.get("tweaks");
     const domainTweaks = tweaks[domain] || [];
     const id = crypto.randomUUID();
+
+    await injectTweak(tabId, { id, type, code });
+
     domainTweaks.push({
       id,
       prompt,
       code,
+      type,
       enabled: true,
       createdAt: Date.now(),
     });
@@ -207,30 +213,27 @@ async function handleApplyTweak({ prompt, tabId }) {
     },
   });
 
-  const code = await callAPIWithFallback(
+  const tab = await chrome.tabs.get(tabId);
+  const domain = new URL(tab.url).hostname;
+
+  const { type, code } = await callAPIWithFallback(
     anthropicApiKey,
     codexApiKey,
     defaultProvider,
     domTree,
     prompt,
+    null,
+    tab.url,
   );
 
-  // Generate a unique ID for this tweak
   const id = crypto.randomUUID();
 
-  console.log("[Tweak] Output:", code);
+  console.log("[Tweak] Output:", { type, code });
 
-  await chrome.scripting.insertCSS({
-    target: { tabId },
-    css: code,
-  });
-
-  // Save tweak to storage from the background script
-  const tab = await chrome.tabs.get(tabId);
-  const domain = new URL(tab.url).hostname;
+  await injectTweak(tabId, { id, type, code });
   const { tweaks = {} } = await chrome.storage.local.get("tweaks");
   const domainTweaks = tweaks[domain] || [];
-  domainTweaks.push({ id, prompt, code, enabled: true, createdAt: Date.now() });
+  domainTweaks.push({ id, prompt, code, type, enabled: true, createdAt: Date.now() });
   tweaks[domain] = domainTweaks;
   await chrome.storage.local.set({ tweaks });
 
@@ -247,6 +250,7 @@ async function callAPIWithFallback(
   outerHTML,
   prompt,
   elementContext = null,
+  pageUrl = null,
 ) {
   const primary = defaultProvider === "codex" ? "codex" : "anthropic";
   const fallback = primary === "anthropic" ? "codex" : "anthropic";
@@ -262,6 +266,7 @@ async function callAPIWithFallback(
         outerHTML,
         prompt,
         elementContext,
+        pageUrl,
       );
     } catch (err) {
       console.warn(`[Tweak] ${primary} API failed:`, err.message);
@@ -273,6 +278,7 @@ async function callAPIWithFallback(
           outerHTML,
           prompt,
           elementContext,
+          pageUrl,
         );
       }
       throw err;
@@ -286,6 +292,7 @@ async function callAPIWithFallback(
     outerHTML,
     prompt,
     elementContext,
+    pageUrl,
   );
 }
 
@@ -295,45 +302,84 @@ async function callAPI(
   outerHTML,
   prompt,
   elementContext = null,
+  pageUrl = null,
 ) {
   if (provider === "anthropic") {
-    return callAnthropicAPI(apiKey, outerHTML, prompt, elementContext);
+    return callAnthropicAPI(apiKey, outerHTML, prompt, elementContext, pageUrl);
   }
-  return callCodexAPI(apiKey, outerHTML, prompt, elementContext);
+  return callCodexAPI(apiKey, outerHTML, prompt, elementContext, pageUrl);
 }
 
-const SYSTEM_PROMPT = `You are a browser automation expert. The user is viewing a third-party webpage and wants a visual change applied via injected CSS.
+const SYSTEM_PROMPT = `You are a browser automation expert. The user is viewing a third-party webpage and wants a change applied via injected CSS or JS.
 
 You will be given either a compact DOM tree or a specific target element selected by the user. Use it to find the exact element to target.
 
-Your response must be RAW CSS ONLY — no words, no explanation, no markdown, no code fences, no <style> tags. Start immediately with the first selector.
+Respond with a single JSON object — no prose, no markdown fences:
+{ "type": "css", "code": "..." }
+or
+{ "type": "js", "code": "..." }
 
-Rules:
+Choose the type based on the request:
+- Use "css" for visual changes: hiding, resizing, recoloring, repositioning elements
+- Use "js" for DOM mutations: adding elements, restructuring content, building interactive UI (tabs, toggles, etc.)
+
+CSS rules:
 - Use the exact tag names, IDs, and classes you see in the provided DOM — do not guess or invent selectors
 - Prefer the most specific selector that uniquely identifies the element (e.g. custom element tag names like <recent-posts>, or #id selectors)
 - When a specific target element is provided with a selector path, use that element's tag name, ID, or classes directly. The selectorPath shows its position in the DOM for context.
 - Use !important on every property to override existing styles
 - CSS cannot select by text content — use tag names, IDs, classes, and attribute selectors instead
-- Example output: recent-posts { display: none !important; }`;
 
-// Extract only the CSS from the response, discarding any prose the model prepended
-function extractCSS(raw) {
-  const firstBrace = raw.indexOf("{");
-  if (firstBrace === -1) return raw.trim();
-  const lineStart = raw.lastIndexOf("\n", firstBrace) + 1;
-  return raw
-    .slice(lineStart)
-    .replace(/\n?```$/, "")
-    .trim();
+JS rules:
+- Write self-contained code that operates on document (no imports, no require)
+- Use standard DOM APIs only`;
+
+// Parse the LLM response into { type, code }. Handles JSON with optional markdown fences.
+// Falls back to treating the raw text as CSS if JSON parsing fails.
+function parseResponse(raw) {
+  const stripped = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+  let parsed;
+  try {
+    parsed = JSON.parse(stripped);
+  } catch {
+    // Fallback: assume raw CSS
+    return { type: "css", code: raw.trim() };
+  }
+  if (parsed && (parsed.type === "css" || parsed.type === "js") && typeof parsed.code === "string") {
+    return parsed;
+  }
+  return { type: "css", code: raw.trim() };
 }
 
-function buildUserContent(outerHTML, prompt, elementContext = null) {
+// Inject a tweak into the page. CSS tweaks use insertCSS; JS tweaks use executeScript.
+// The idempotency guard (data-tweak-id meta tag) prevents duplicate JS injection on reload.
+async function injectTweak(tabId, tweak) {
+  const type = tweak.type || "css";
+  if (type === "js") {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      func: (id, code) => {
+        if (document.querySelector(`[data-tweak-id="${id}"]`)) return;
+        (0, eval)(code); // eslint-disable-line no-eval
+        const m = document.createElement("meta");
+        m.setAttribute("data-tweak-id", id);
+        document.head.appendChild(m);
+      },
+      args: [tweak.id, tweak.code],
+    });
+  } else {
+    await chrome.scripting.insertCSS({ target: { tabId }, css: tweak.code });
+  }
+}
+
+function buildUserContent(outerHTML, prompt, elementContext = null, pageUrl = null) {
   let content;
   let contextLabel;
   let contextValue;
+  const urlLine = pageUrl ? `Page URL: ${pageUrl}\n` : "";
   if (elementContext) {
     const { simplifiedHTML, selectorPath } = elementContext;
-    content = `Target element (user-selected):\nSelector path: ${selectorPath}\n${simplifiedHTML}\n\nUser request: ${prompt}`;
+    content = `${urlLine}Target element (user-selected):\nSelector path: ${selectorPath}\n${simplifiedHTML}\n\nUser request: ${prompt}`;
     contextLabel = "Target element: user-selected,";
     contextValue = simplifiedHTML;
   } else {
@@ -343,7 +389,7 @@ function buildUserContent(outerHTML, prompt, elementContext = null) {
         ? outerHTML.slice(0, maxDOMLength) +
           "\n<!-- DOM truncated for length -->"
         : outerHTML;
-    content = `Page DOM:\n${truncatedHTML}\n\nUser request: ${prompt}`;
+    content = `${urlLine}Page DOM:\n${truncatedHTML}\n\nUser request: ${prompt}`;
     contextLabel = "Page DOM:";
     contextValue = truncatedHTML;
   }
@@ -359,6 +405,7 @@ async function callAnthropicAPI(
   outerHTML,
   prompt,
   elementContext = null,
+  pageUrl = null,
 ) {
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
@@ -375,7 +422,7 @@ async function callAnthropicAPI(
       messages: [
         {
           role: "user",
-          content: buildUserContent(outerHTML, prompt, elementContext),
+          content: buildUserContent(outerHTML, prompt, elementContext, pageUrl),
         },
       ],
     }),
@@ -390,10 +437,10 @@ async function callAnthropicAPI(
   }
 
   const data = await response.json();
-  return extractCSS(data.content[0].text);
+  return parseResponse(data.content[0].text);
 }
 
-async function callCodexAPI(apiKey, outerHTML, prompt, elementContext = null) {
+async function callCodexAPI(apiKey, outerHTML, prompt, elementContext = null, pageUrl = null) {
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -410,7 +457,7 @@ async function callCodexAPI(apiKey, outerHTML, prompt, elementContext = null) {
         },
         {
           role: "user",
-          content: buildUserContent(outerHTML, prompt, elementContext),
+          content: buildUserContent(outerHTML, prompt, elementContext, pageUrl),
         },
       ],
     }),
@@ -425,7 +472,7 @@ async function callCodexAPI(apiKey, outerHTML, prompt, elementContext = null) {
   }
 
   const data = await response.json();
-  return extractCSS(data.choices[0].message.content);
+  return parseResponse(data.choices[0].message.content);
 }
 
 async function saveRecentPrompt(prompt) {

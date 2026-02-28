@@ -199,16 +199,28 @@ function createTweakItem(tweak) {
       id: tweak.id,
       enabled: checkbox.checked,
     });
-    if (checkbox.checked) {
-      await chrome.scripting.insertCSS({
-        target: { tabId: currentTabId },
-        css: tweak.code,
-      });
+    if ((tweak.type || "css") === "js") {
+      if (checkbox.checked) {
+        await chrome.runtime.sendMessage({
+          type: "INJECT_TWEAK",
+          tabId: currentTabId,
+          tweak,
+        });
+      } else {
+        chrome.tabs.reload(currentTabId);
+      }
     } else {
-      await chrome.scripting.removeCSS({
-        target: { tabId: currentTabId },
-        css: tweak.code,
-      });
+      if (checkbox.checked) {
+        await chrome.scripting.insertCSS({
+          target: { tabId: currentTabId },
+          css: tweak.code,
+        });
+      } else {
+        await chrome.scripting.removeCSS({
+          target: { tabId: currentTabId },
+          css: tweak.code,
+        });
+      }
     }
     li.classList.toggle("disabled", !checkbox.checked);
   });
@@ -227,9 +239,13 @@ function createTweakItem(tweak) {
       type: "DELETE_TWEAK",
       id: tweak.id,
     });
-    await chrome.scripting
-      .removeCSS({ target: { tabId: currentTabId }, css: tweak.code })
-      .catch(() => {});
+    if ((tweak.type || "css") === "js") {
+      chrome.tabs.reload(currentTabId);
+    } else {
+      await chrome.scripting
+        .removeCSS({ target: { tabId: currentTabId }, css: tweak.code })
+        .catch(() => {});
+    }
     li.remove();
     const list = document.getElementById("tweaks-list");
     if (list.children.length === 0) {
