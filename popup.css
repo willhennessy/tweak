@@ -6,12 +6,137 @@
   padding: 0;
 }
 
+/* ── Chrome color tokens ─────────────────────────────────────────── */
+:root {
+  /* Surfaces */
+  --bg:              #F1F3F4;  /* Anti-Flash White */
+  --surface:         #FFFFFF;
+  --surface-hover:   #E8EAED;
+
+  /* Borders */
+  --border:          #DADCE0;
+  --border-focus:    #4C8BF5;  /* Chrome Blue */
+
+  /* Text */
+  --text-primary:    #202124;  /* Bright Black */
+  --text-secondary:  #5F6368;  /* Flint */
+  --text-placeholder:#BABCBE;  /* Shimmer Grey */
+
+  /* Accent palette */
+  --blue:            #4C8BF5;
+  --green:           #1DA462;
+  --red:             #DD5144;
+  --yellow:          #FFCD46;
+
+  /* Primary button (Select region) */
+  --btn-primary-bg:    #4C8BF5;
+  --btn-primary-text:  #FFFFFF;
+  --btn-primary-hover: #3B7DE8;
+
+  /* Ghost button (Apply to page) */
+  --btn-ghost-border:      #DADCE0;
+  --btn-ghost-text:        #5F6368;
+  --btn-ghost-hover-bg:    #E8EAED;
+  --btn-ghost-hover-text:  #202124;
+
+  /* Status banners */
+  --status-loading-bg:      #E8F0FE;
+  --status-loading-text:    #1A73E8;
+  --status-loading-border:  #AECBFA;
+  --status-success-bg:      #E6F4EA;
+  --status-success-text:    #1E8E3E;
+  --status-success-border:  #A8D5B5;
+  --status-error-bg:        #FCE8E6;
+  --status-error-text:      #D93025;
+  --status-error-border:    #F5C6C2;
+
+  /* Tabs */
+  --tab-border:          #DADCE0;
+  --tab-text:            #5F6368;
+  --tab-active-text:     #202124;
+  --tab-active-underline:#4C8BF5;
+
+  /* List items */
+  --item-bg:             #FFFFFF;
+  --item-border:         #DADCE0;
+  --item-hover-border:   #BABCBE;
+  --item-text:           #5F6368;
+  --item-disabled-text:  #BABCBE;
+
+  /* Toggle switch */
+  --toggle-track:         #DADCE0;
+  --toggle-thumb:         #FFFFFF;
+  --toggle-checked-track: #1DA462;
+  --toggle-checked-thumb: #FFFFFF;
+
+  /* Recent prompts */
+  --recent-text:       #5F6368;
+  --recent-hover-bg:   #F1F3F4;
+  --recent-hover-text: #202124;
+
+  /* Misc */
+  --empty-text:        #BABCBE;
+  --options-btn:       #5F6368;
+  --options-btn-hover: #202124;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:              #202124;  /* Bright Black */
+    --surface:         #292A2D;
+    --surface-hover:   #35363A;
+    --border:          #3C4043;
+    --text-primary:    #E8EAED;
+    --text-secondary:  #9AA0A6;
+    --text-placeholder:#5F6368;
+
+    --btn-primary-hover: #5F9AF7;
+
+    --btn-ghost-border:      #5F6368;
+    --btn-ghost-text:        #9AA0A6;
+    --btn-ghost-hover-bg:    #35363A;
+    --btn-ghost-hover-text:  #E8EAED;
+
+    --status-loading-bg:      #1A2745;
+    --status-loading-text:    #8AB4F8;
+    --status-loading-border:  #2A4080;
+    --status-success-bg:      #0D2A1A;
+    --status-success-text:    #34A853;
+    --status-success-border:  #1A4A2A;
+    --status-error-bg:        #2A0D0D;
+    --status-error-text:      #F28B82;
+    --status-error-border:    #5A1A1A;
+
+    --tab-border:          #3C4043;
+    --tab-text:            #9AA0A6;
+    --tab-active-text:     #E8EAED;
+
+    --item-bg:             #292A2D;
+    --item-border:         #3C4043;
+    --item-hover-border:   #5F6368;
+    --item-text:           #9AA0A6;
+    --item-disabled-text:  #5F6368;
+
+    --toggle-track:        #5F6368;
+    --toggle-thumb:        #BABCBE;
+
+    --recent-text:         #9AA0A6;
+    --recent-hover-bg:     #35363A;
+    --recent-hover-text:   #E8EAED;
+
+    --empty-text:          #5F6368;
+    --options-btn:         #9AA0A6;
+    --options-btn-hover:   #E8EAED;
+  }
+}
+
+/* ── Base ────────────────────────────────────────────────────────── */
 body {
   font-family:
     -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   font-size: 13px;
-  background: #0f0f0f;
-  color: #e8e8e8;
+  background: var(--bg);
+  color: var(--text-primary);
   width: 340px;
   min-height: 200px;
 }
@@ -23,6 +148,7 @@ body {
   gap: 10px;
 }
 
+/* ── Header ──────────────────────────────────────────────────────── */
 header {
   display: flex;
   align-items: center;
@@ -33,13 +159,13 @@ header h1 {
   font-size: 16px;
   font-weight: 700;
   letter-spacing: 0.5px;
-  color: #fff;
+  color: var(--text-primary);
 }
 
 #options-btn {
   background: none;
   border: none;
-  color: #888;
+  color: var(--options-btn);
   font-size: 16px;
   cursor: pointer;
   padding: 2px 4px;
@@ -49,9 +175,10 @@ header h1 {
 }
 
 #options-btn:hover {
-  color: #e8e8e8;
+  color: var(--options-btn-hover);
 }
 
+/* ── Input section ───────────────────────────────────────────────── */
 .input-section {
   display: flex;
   flex-direction: column;
@@ -60,10 +187,10 @@ header h1 {
 
 textarea {
   flex: 1;
-  background: #1a1a1a;
-  border: 1px solid #333;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 6px;
-  color: #e8e8e8;
+  color: var(--text-primary);
   font-size: 13px;
   font-family: inherit;
   padding: 8px 10px;
@@ -74,13 +201,14 @@ textarea {
 }
 
 textarea:focus {
-  border-color: #555;
+  border-color: var(--border-focus);
 }
 
 textarea::placeholder {
-  color: #555;
+  color: var(--text-placeholder);
 }
 
+/* ── Buttons ─────────────────────────────────────────────────────── */
 .btn-row {
   display: flex;
   gap: 8px;
@@ -105,35 +233,36 @@ textarea::placeholder {
 }
 
 #pick-btn {
-  background: #fff;
-  color: #0f0f0f;
+  background: var(--btn-primary-bg);
+  color: var(--btn-primary-text);
   border: none;
   line-height: 1.2;
 }
 
 #pick-btn:hover:not(:disabled) {
-  background: #ddd;
+  background: var(--btn-primary-hover);
 }
 
 .btn-sublabel {
   display: block;
   font-size: 10px;
   font-weight: 400;
-  opacity: 0.6;
+  opacity: 0.7;
   margin-top: 2px;
 }
 
 #apply-btn {
   background: transparent;
-  color: #aaa;
-  border: 1px solid #444;
+  color: var(--btn-ghost-text);
+  border: 1px solid var(--btn-ghost-border);
 }
 
 #apply-btn:hover:not(:disabled) {
-  background: #1a1a1a;
-  color: #ddd;
+  background: var(--btn-ghost-hover-bg);
+  color: var(--btn-ghost-hover-text);
 }
 
+/* ── Status banner ───────────────────────────────────────────────── */
 .status {
   font-size: 12px;
   padding: 6px 10px;
@@ -146,34 +275,35 @@ textarea::placeholder {
 }
 
 .status.loading {
-  background: #1a1a2e;
-  color: #7eb8f7;
-  border: 1px solid #2a3a5e;
+  background: var(--status-loading-bg);
+  color: var(--status-loading-text);
+  border: 1px solid var(--status-loading-border);
 }
 
 .status.success {
-  background: #0d2011;
-  color: #4ade80;
-  border: 1px solid #1a4a2a;
+  background: var(--status-success-bg);
+  color: var(--status-success-text);
+  border: 1px solid var(--status-success-border);
 }
 
 .status.error {
-  background: #2a0d0d;
-  color: #f87171;
-  border: 1px solid #5a1a1a;
+  background: var(--status-error-bg);
+  color: var(--status-error-text);
+  border: 1px solid var(--status-error-border);
 }
 
+/* ── Tabs ────────────────────────────────────────────────────────── */
 .tabs {
   display: flex;
   gap: 0;
-  border-bottom: 1px solid #222;
+  border-bottom: 1px solid var(--tab-border);
 }
 
 .tab-btn {
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
-  color: #666;
+  color: var(--tab-text);
   font-size: 12px;
   font-weight: 500;
   padding: 6px 12px;
@@ -185,12 +315,12 @@ textarea::placeholder {
 }
 
 .tab-btn:hover {
-  color: #aaa;
+  color: var(--tab-active-text);
 }
 
 .tab-btn.active {
-  color: #fff;
-  border-bottom-color: #fff;
+  color: var(--tab-active-text);
+  border-bottom-color: var(--tab-active-underline);
 }
 
 .tab-content {
@@ -201,6 +331,7 @@ textarea::placeholder {
   display: none;
 }
 
+/* ── Lists ───────────────────────────────────────────────────────── */
 .item-list {
   list-style: none;
   display: flex;
@@ -210,7 +341,7 @@ textarea::placeholder {
 }
 
 .empty-msg {
-  color: #555;
+  color: var(--empty-text);
   font-size: 12px;
   padding: 12px 0 4px;
   text-align: center;
@@ -225,7 +356,7 @@ textarea::placeholder {
   padding: 7px 10px;
   border-radius: 5px;
   cursor: pointer;
-  color: #bbb;
+  color: var(--recent-text);
   font-size: 12px;
   line-height: 1.3;
   transition:
@@ -237,8 +368,8 @@ textarea::placeholder {
 }
 
 .recent-item:hover {
-  background: #1e1e1e;
-  color: #fff;
+  background: var(--recent-hover-bg);
+  color: var(--recent-hover-text);
 }
 
 /* Tweak items */
@@ -248,19 +379,19 @@ textarea::placeholder {
   gap: 8px;
   padding: 7px 8px;
   border-radius: 5px;
-  border: 1px solid #1e1e1e;
-  background: #141414;
+  border: 1px solid var(--item-border);
+  background: var(--item-bg);
   transition: border-color 0.15s;
 }
 
 .tweak-item:hover {
-  border-color: #2a2a2a;
+  border-color: var(--item-hover-border);
 }
 
 .tweak-label {
   flex: 1;
   font-size: 12px;
-  color: #bbb;
+  color: var(--item-text);
   line-height: 1.3;
   white-space: nowrap;
   overflow: hidden;
@@ -268,11 +399,11 @@ textarea::placeholder {
 }
 
 .tweak-item.disabled .tweak-label {
-  color: #555;
+  color: var(--item-disabled-text);
   text-decoration: line-through;
 }
 
-/* Toggle switch */
+/* ── Toggle switch ───────────────────────────────────────────────── */
 .toggle {
   position: relative;
   width: 30px;
@@ -289,7 +420,7 @@ textarea::placeholder {
 .toggle-slider {
   position: absolute;
   inset: 0;
-  background: #333;
+  background: var(--toggle-track);
   border-radius: 16px;
   cursor: pointer;
   transition: background 0.2s;
@@ -302,7 +433,7 @@ textarea::placeholder {
   width: 12px;
   left: 2px;
   bottom: 2px;
-  background: #888;
+  background: var(--toggle-thumb);
   border-radius: 50%;
   transition:
     transform 0.2s,
@@ -310,18 +441,19 @@ textarea::placeholder {
 }
 
 .toggle input:checked + .toggle-slider {
-  background: #1a3a1a;
+  background: var(--toggle-checked-track);
 }
 
 .toggle input:checked + .toggle-slider::before {
   transform: translateX(14px);
-  background: #4ade80;
+  background: var(--toggle-checked-thumb);
 }
 
+/* ── Delete button ───────────────────────────────────────────────── */
 .delete-btn {
   background: none;
   border: none;
-  color: #444;
+  color: var(--item-disabled-text);
   font-size: 14px;
   cursor: pointer;
   padding: 2px 4px;
@@ -332,5 +464,5 @@ textarea::placeholder {
 }
 
 .delete-btn:hover {
-  color: #f87171;
+  color: var(--red);
 }

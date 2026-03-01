@@ -4,11 +4,73 @@
   padding: 0;
 }
 
+/* ── Chrome color tokens ─────────────────────────────────────────── */
+:root {
+  --bg:              #F1F3F4;  /* Anti-Flash White */
+  --surface:         #FFFFFF;
+  --border:          #DADCE0;
+  --border-focus:    #4C8BF5;  /* Chrome Blue */
+
+  --text-primary:    #202124;  /* Bright Black */
+  --text-secondary:  #5F6368;  /* Flint */
+  --text-placeholder:#BABCBE;  /* Shimmer Grey */
+
+  --blue:            #4C8BF5;
+  --green:           #1DA462;
+  --red:             #DD5144;
+
+  --link:            #4C8BF5;
+
+  --save-btn-bg:     #4C8BF5;
+  --save-btn-text:   #FFFFFF;
+  --save-btn-hover:  #3B7DE8;
+
+  --eye-bg:          #FFFFFF;
+  --eye-border:      #DADCE0;
+  --eye-color:       #5F6368;
+  --eye-hover-color: #202124;
+
+  --status-success-bg:     #E6F4EA;
+  --status-success-text:   #1E8E3E;
+  --status-success-border: #A8D5B5;
+  --status-error-bg:       #FCE8E6;
+  --status-error-text:     #D93025;
+  --status-error-border:   #F5C6C2;
+
+  --radio-accent:    #4C8BF5;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg:              #202124;  /* Bright Black */
+    --surface:         #292A2D;
+    --border:          #3C4043;
+    --text-primary:    #E8EAED;
+    --text-secondary:  #9AA0A6;
+    --text-placeholder:#5F6368;
+
+    --save-btn-hover:  #5F9AF7;
+
+    --eye-bg:          #292A2D;
+    --eye-border:      #3C4043;
+    --eye-color:       #9AA0A6;
+    --eye-hover-color: #E8EAED;
+
+    --status-success-bg:     #0D2A1A;
+    --status-success-text:   #34A853;
+    --status-success-border: #1A4A2A;
+    --status-error-bg:       #2A0D0D;
+    --status-error-text:     #F28B82;
+    --status-error-border:   #5A1A1A;
+  }
+}
+
+/* ── Base ────────────────────────────────────────────────────────── */
 body {
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   font-size: 14px;
-  background: #0f0f0f;
-  color: #e8e8e8;
+  background: var(--bg);
+  color: var(--text-primary);
   min-height: 100vh;
   display: flex;
   justify-content: center;
@@ -23,6 +85,7 @@ body {
   gap: 32px;
 }
 
+/* ── Header ──────────────────────────────────────────────────────── */
 header {
   display: flex;
   flex-direction: column;
@@ -32,14 +95,15 @@ header {
 header h1 {
   font-size: 24px;
   font-weight: 700;
-  color: #fff;
+  color: var(--text-primary);
 }
 
 .subtitle {
   font-size: 13px;
-  color: #666;
+  color: var(--text-secondary);
 }
 
+/* ── Section ─────────────────────────────────────────────────────── */
 .section {
   display: flex;
   flex-direction: column;
@@ -49,17 +113,17 @@ header h1 {
 label {
   font-size: 13px;
   font-weight: 600;
-  color: #ccc;
+  color: var(--text-primary);
 }
 
 .hint {
   font-size: 12px;
-  color: #666;
+  color: var(--text-secondary);
   line-height: 1.5;
 }
 
 .hint a {
-  color: #7eb8f7;
+  color: var(--link);
   text-decoration: none;
 }
 
@@ -67,6 +131,7 @@ label {
   text-decoration: underline;
 }
 
+/* ── API key row ─────────────────────────────────────────────────── */
 .key-row {
   display: flex;
   gap: 8px;
@@ -75,10 +140,10 @@ label {
 input[type="password"],
 input[type="text"] {
   flex: 1;
-  background: #1a1a1a;
-  border: 1px solid #333;
+  background: var(--surface);
+  border: 1px solid var(--border);
   border-radius: 6px;
-  color: #e8e8e8;
+  color: var(--text-primary);
   font-size: 13px;
   font-family: monospace;
   padding: 9px 12px;
@@ -87,28 +152,29 @@ input[type="text"] {
 }
 
 input:focus {
-  border-color: #555;
+  border-color: var(--border-focus);
 }
 
-#toggle-visibility {
-  background: #1a1a1a;
-  border: 1px solid #333;
+.toggle-visibility {
+  background: var(--eye-bg);
+  border: 1px solid var(--eye-border);
   border-radius: 6px;
-  color: #888;
+  color: var(--eye-color);
   font-size: 16px;
   cursor: pointer;
   padding: 0 10px;
   transition: color 0.15s, border-color 0.15s;
 }
 
-#toggle-visibility:hover {
-  color: #e8e8e8;
-  border-color: #555;
+.toggle-visibility:hover {
+  color: var(--eye-hover-color);
+  border-color: var(--border-focus);
 }
 
+/* ── Save button ─────────────────────────────────────────────────── */
 #save-btn {
-  background: #fff;
-  color: #0f0f0f;
+  background: var(--save-btn-bg);
+  color: var(--save-btn-text);
   border: none;
   border-radius: 6px;
   font-size: 13px;
@@ -120,9 +186,10 @@ input:focus {
 }
 
 #save-btn:hover {
-  background: #ddd;
+  background: var(--save-btn-hover);
 }
 
+/* ── Save status ─────────────────────────────────────────────────── */
 .save-status {
   font-size: 12px;
   padding: 6px 10px;
@@ -134,17 +201,18 @@ input:focus {
 }
 
 .save-status.success {
-  background: #0d2011;
-  color: #4ade80;
-  border: 1px solid #1a4a2a;
+  background: var(--status-success-bg);
+  color: var(--status-success-text);
+  border: 1px solid var(--status-success-border);
 }
 
 .save-status.error {
-  background: #2a0d0d;
-  color: #f87171;
-  border: 1px solid #5a1a1a;
+  background: var(--status-error-bg);
+  color: var(--status-error-text);
+  border: 1px solid var(--status-error-border);
 }
 
+/* ── Provider radio ──────────────────────────────────────────────── */
 .provider-options {
   display: flex;
   gap: 16px;
@@ -156,11 +224,11 @@ input:focus {
   gap: 6px;
   font-size: 13px;
   font-weight: 400;
-  color: #ccc;
+  color: var(--text-secondary);
   cursor: pointer;
 }
 
 .provider-option input[type="radio"] {
-  accent-color: #7eb8f7;
+  accent-color: var(--radio-accent);
   cursor: pointer;
 }
