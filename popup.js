@@ -8,6 +8,7 @@ async function init() {
   setupTabs();
   setupSubmit();
   setupOptions();
+  setupFeedback();
   await loadRecentPrompts();
   await loadActiveTweaks();
   await checkPickerError();
@@ -86,6 +87,7 @@ async function submitTweak() {
       input.value = "";
       await loadRecentPrompts();
       await loadActiveTweaks();
+      showFeedback();
       setTimeout(() => {
         btn.textContent = "Apply to page";
         btn.disabled = false;
@@ -115,6 +117,45 @@ async function startPicker() {
   });
 
   window.close();
+}
+
+function setupFeedback() {
+  const row = document.getElementById("feedback-row");
+  const upBtn = document.getElementById("feedback-up");
+  const downBtn = document.getElementById("feedback-down");
+
+  upBtn.addEventListener("click", () => {
+    console.log("[Tweak] Feedback:", { result: "thumbs up", reason: "" });
+    upBtn.classList.add("selected");
+    downBtn.style.display = "none";
+    setTimeout(() => hideFeedback(), 1500);
+  });
+
+  downBtn.addEventListener("click", () => {
+    console.log("[Tweak] Feedback:", { result: "thumbs down", reason: "" });
+    downBtn.classList.add("selected");
+    upBtn.style.display = "none";
+    setTimeout(() => hideFeedback(), 1500);
+  });
+
+  document.getElementById("prompt-input").addEventListener("input", () => {
+    hideFeedback();
+  });
+}
+
+function showFeedback() {
+  const row = document.getElementById("feedback-row");
+  const upBtn = document.getElementById("feedback-up");
+  const downBtn = document.getElementById("feedback-down");
+  upBtn.classList.remove("selected");
+  downBtn.classList.remove("selected");
+  upBtn.style.display = "";
+  downBtn.style.display = "";
+  row.classList.remove("hidden");
+}
+
+function hideFeedback() {
+  document.getElementById("feedback-row").classList.add("hidden");
 }
 
 function showStatus(type, message) {

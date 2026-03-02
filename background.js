@@ -178,37 +178,96 @@ async function handleApplyTweak({ prompt, tabId }) {
     );
   }
 
-  // Extract a compact DOM skeleton: tags + identifying attributes, no content or SVGs.
-  // This fits far more page structure into the token budget than raw outerHTML.
+  // Extract a compact DOM skeleton with Smart Skeleton enhancements:
+  // text hints, deduplication, wrapper collapsing, class pruning, href/alt, landmark comments.
   const [{ result: domTree }] = await chrome.scripting.executeScript({
     target: { tabId },
     func: () => {
       const SKIP = new Set(["script", "style", "svg", "noscript", "head"]);
       const ID_ATTRS = [
-        "id",
-        "class",
-        "aria-label",
-        "data-testid",
-        "role",
-        "name",
-        "type",
-        "slot",
-        "placeholder",
+        "id", "class", "aria-label", "data-testid", "role",
+        "name", "type", "slot", "placeholder",
       ];
+      const LANDMARKS = {
+        main: "MAIN CONTENT", nav: "NAVIGATION", header: "HEADER",
+        footer: "FOOTER", aside: "SIDEBAR",
+      };
+      const WRAPPER_SKIP_TAGS = new Set([
+        "main", "article", "section", "nav", "header", "footer", "aside",
+      ]);
+      // Matches Tailwind/utility class prefixes — pruned to reduce token noise.
+      const UTILITY_RE = /^(p[xytblr]?|m[xytblr]?|w-|h-|min-|max-|text-|font-|bg-|border|rounded|shadow|flex|grid|gap-|space-|leading-|tracking-|opacity-|overflow-|z-|absolute|relative|fixed|sticky|block|inline|hidden|transition|duration|cursor|transform|rotate|scale|translate|animate)-?\d*/;
+
+      function pruneClasses(classStr) {
+        const kept = classStr.split(/\s+/).filter(c => !UTILITY_RE.test(c));
+        // Fallback: keep first 2 classes so the element is never classless.
+        return kept.length > 0 ? kept.join(" ") : classStr.split(/\s+/).slice(0, 2).join(" ");
+      }
+
+      // A wrapper is a classless, ID-less, role-less element with exactly one element child.
+      // We recurse through it without incrementing depth so real leaf nodes aren't pruned.
+      function isWrapper(node) {
+        if (node.children.length !== 1) return false;
+        if (WRAPPER_SKIP_TAGS.has(node.tagName.toLowerCase())) return false;
+        return !node.id && !node.className && !node.getAttribute("role");
+      }
+
+      // Collapse runs of 3+ consecutive identical sibling skeletons.
+      function deduplicateChildren(outputs) {
+        const result = [];
+        let i = 0;
+        while (i < outputs.length) {
+          let j = i + 1;
+          while (j < outputs.length && outputs[j] === outputs[i]) j++;
+          result.push(outputs[i]);
+          if (j - i - 1 >= 2) result.push(`<!-- +${j - i - 1} similar -->`);
+          i = j;
+        }
+        return result;
+      }
+
       function simplify(node, depth) {
-        if (depth > 15 || node.nodeType !== 1) return "";
+        if (depth > 20 || node.nodeType !== 1) return "";
         const tag = node.tagName.toLowerCase();
         if (SKIP.has(tag)) return "";
-        const attrs = ID_ATTRS.map((a) => {
+
+        // Wrapper collapsing: pass through without incrementing depth.
+        if (isWrapper(node)) return simplify(node.children[0], depth);
+
+        let attrs = ID_ATTRS.map((a) => {
           const v = node.getAttribute(a);
-          return v ? ` ${a}="${v}"` : "";
+          if (!v) return "";
+          if (a === "class") return ` class="${pruneClasses(v)}"`;
+          return ` ${a}="${v}"`;
         }).join("");
-        const children = Array.from(node.children)
-          .map((c) => simplify(c, depth + 1))
-          .filter(Boolean)
-          .join("");
-        return `<${tag}${attrs}>${children}</${tag}>`;
+
+        // Emit first 40 chars of direct (non-descendant) text so the LLM can
+        // identify elements by visible label without targeting data-text in selectors.
+        const directText = Array.from(node.childNodes)
+          .filter(n => n.nodeType === 3)
+          .map(n => n.textContent.trim())
+          .join(" ")
+          .slice(0, 40)
+          .replace(/"/g, "&quot;");
+        if (directText) attrs += ` data-text="${directText}"`;
+
+        // Preserve href on links and alt on images as identification signals.
+        if (tag === "a") {
+          const href = node.getAttribute("href");
+          if (href) attrs += ` href="${href.slice(0, 60)}"`;
+        } else if (tag === "img") {
+          const alt = node.getAttribute("alt");
+          if (alt) attrs += ` alt="${alt.slice(0, 40).replace(/"/g, "&quot;")}"`;
+        }
+
+        const landmark = LANDMARKS[tag] ? `\n<!-- ${LANDMARKS[tag]} -->\n` : "";
+        const childOutputs = Array.from(node.children)
+          .map(c => simplify(c, depth + 1))
+          .filter(Boolean);
+        const children = deduplicateChildren(childOutputs).join("");
+        return `${landmark}<${tag}${attrs}>${children}</${tag}>`;
       }
+
       return simplify(document.documentElement, 0);
     },
   });
@@ -329,6 +388,7 @@ CSS rules:
 - When a specific target element is provided with a selector path, use that element's tag name, ID, or classes directly. The selectorPath shows its position in the DOM for context.
 - Use !important on every property to override existing styles
 - CSS cannot select by text content — use tag names, IDs, classes, and attribute selectors instead
+- data-text attributes in the DOM are hints showing visible text for your reference only — never use data-text in generated selectors
 
 JS rules:
 - Write self-contained code that operates on document (no imports, no require)
