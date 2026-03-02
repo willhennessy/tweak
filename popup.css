@@ -216,6 +216,9 @@ textarea::placeholder {
 
 .btn-row button {
   flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   border-radius: 6px;
   font-size: 13px;
   font-weight: 600;
@@ -236,7 +239,6 @@ textarea::placeholder {
   background: var(--btn-primary-bg);
   color: var(--btn-primary-text);
   border: none;
-  line-height: 1.2;
 }
 
 #pick-btn:hover:not(:disabled) {
@@ -260,6 +262,27 @@ textarea::placeholder {
 #apply-btn:hover:not(:disabled) {
   background: var(--btn-ghost-hover-bg);
   color: var(--btn-ghost-hover-text);
+}
+
+#extract-btn {
+  background: transparent;
+  color: var(--btn-ghost-text);
+  border: 1px solid var(--btn-ghost-border);
+}
+
+#extract-btn:hover:not(:disabled) {
+  background: var(--btn-ghost-hover-bg);
+  color: var(--btn-ghost-hover-text);
+}
+
+.extract-result {
+  font-size: 12px;
+  color: var(--text-secondary);
+  text-align: center;
+}
+
+.extract-result.hidden {
+  display: none;
 }
 
 /* ── Feedback row ────────────────────────────────────────────────── */

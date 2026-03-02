@@ -16,7 +16,7 @@ options.html/css/js — API key + provider settings
 
 ### Output format (background.js)
 - The LLM currently returns **raw CSS only**. Any change to support JS output must update the system prompt AND the `parseResponse`/`extractCSS` logic together.
-- `buildUserContent()` builds the user message and also fires all console logs. Don't split the log calls away from this function.
+- `buildUserContent()` builds the user message and fires all console logs for Apply and Select region. Extract logs separately in `extractDOM` (popup.js) — these two are different JS processes and can't share a function.
 - `callAPIWithFallback()` → `callAPI()` → `callAnthropicAPI()` / `callCodexAPI()`: all three levels thread `elementContext` through. If you add new parameters, add them at all three levels.
 
 ### CSS injection (background.js + popup.js)

@@ -50,9 +50,11 @@ function setupSubmit() {
   const input = document.getElementById("prompt-input");
   const applyBtn = document.getElementById("apply-btn");
   const pickBtn = document.getElementById("pick-btn");
+  const extractBtn = document.getElementById("extract-btn");
 
   applyBtn.addEventListener("click", submitTweak);
   pickBtn.addEventListener("click", startPicker);
+  extractBtn.addEventListener("click", extractDOM);
   input.addEventListener("keydown", (e) => {
     if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
       submitTweak();
@@ -117,6 +119,148 @@ async function startPicker() {
   });
 
   window.close();
+}
+
+async function extractDOM() {
+  const btn = document.getElementById("extract-btn");
+  const resultEl = document.getElementById("extract-result");
+  btn.disabled = true;
+  btn.textContent = "Extracting...";
+  resultEl.classList.add("hidden");
+
+  try {
+    const [{ result: domTree }] = await chrome.scripting.executeScript({
+      target: { tabId: currentTabId },
+      func: () => {
+        const SKIP = new Set(["script", "style", "svg", "noscript", "head"]);
+        const ID_ATTRS = [
+          "id", "class", "aria-label", "data-testid", "role",
+          "name", "type", "slot", "placeholder",
+        ];
+        const LANDMARKS = {
+          main: "MAIN CONTENT", nav: "NAVIGATION", header: "HEADER",
+          footer: "FOOTER", aside: "SIDEBAR",
+        };
+        const WRAPPER_SKIP_TAGS = new Set([
+          "main", "article", "section", "nav", "header", "footer", "aside",
+        ]);
+        const UTILITY_RE = /^(p[xytblr]?|m[xytblr]?|w-|h-|min-|max-|text-|font-|bg-|border|rounded|shadow|flex|grid|gap-|space-|leading-|tracking-|opacity-|overflow-|z-|absolute|relative|fixed|sticky|block|inline|hidden|transition|duration|cursor|transform|rotate|scale|translate|animate)-?\d*/;
+        const GENERATED_RE = /^(sc-[a-zA-Z0-9]+|css-[a-zA-Z0-9]+|[a-z]{1,2}[A-Z][a-zA-Z]{3,}|_[a-zA-Z]+_[a-zA-Z0-9]+_\d+)$/;
+
+        function pruneClasses(classStr) {
+          const parts = classStr.split(/\s+/);
+          const kept = parts.filter(c => !UTILITY_RE.test(c) && !GENERATED_RE.test(c));
+          return kept.length > 0 ? kept.join(" ") : parts.slice(0, 2).join(" ");
+        }
+
+        function isWrapper(node) {
+          if (node.children.length !== 1) return false;
+          if (WRAPPER_SKIP_TAGS.has(node.tagName.toLowerCase())) return false;
+          return !node.id && !node.className && !node.getAttribute("role");
+        }
+
+        function normalizeForDedup(s) {
+          return s
+            .replace(/data-text="[^"]*"/g, 'data-text=""')
+            .replace(/href="[^"]*"/g, 'href=""')
+            .replace(/alt="[^"]*"/g, 'alt=""');
+        }
+
+        function deduplicateChildren(outputs) {
+          const result = [];
+          let i = 0;
+          while (i < outputs.length) {
+            const normI = normalizeForDedup(outputs[i]);
+            let j = i + 1;
+            while (j < outputs.length && normalizeForDedup(outputs[j]) === normI) j++;
+            result.push(outputs[i]);
+            if (j - i - 1 >= 2) result.push(`<!-- +${j - i - 1} similar -->`);
+            i = j;
+          }
+          return result;
+        }
+
+        function simplify(node, depth) {
+          if (depth > 20 || node.nodeType !== 1) return "";
+          const tag = node.tagName.toLowerCase();
+          if (SKIP.has(tag)) return "";
+
+          if (
+            node.hidden ||
+            node.getAttribute("aria-hidden") === "true" ||
+            node.style.display === "none" ||
+            node.style.visibility === "hidden"
+          ) return "";
+
+          if (isWrapper(node)) return simplify(node.children[0], depth);
+
+          let attrs = ID_ATTRS.map((a) => {
+            const v = node.getAttribute(a);
+            if (!v) return "";
+            if (a === "class") return ` class="${pruneClasses(v)}"`;
+            return ` ${a}="${v}"`;
+          }).join("");
+
+          const directText = Array.from(node.childNodes)
+            .filter(n => n.nodeType === 3)
+            .map(n => n.textContent.trim())
+            .join(" ")
+            .slice(0, 40)
+            .replace(/"/g, "&quot;");
+          if (directText) attrs += ` data-text="${directText}"`;
+
+          if (tag === "a") {
+            const href = node.getAttribute("href");
+            if (href) attrs += ` href="${href.slice(0, 60)}"`;
+          } else if (tag === "img") {
+            const alt = node.getAttribute("alt");
+            if (alt) attrs += ` alt="${alt.slice(0, 40).replace(/"/g, "&quot;")}"`;
+          }
+
+          for (const a of ["aria-expanded", "aria-selected", "aria-checked", "aria-current"]) {
+            const v = node.getAttribute(a);
+            if (v !== null) attrs += ` ${a}="${v}"`;
+          }
+
+          const title = node.getAttribute("title");
+          if (title) attrs += ` title="${title.slice(0, 40).replace(/"/g, "&quot;")}"`;
+
+          if (tag === "input" || tag === "textarea") {
+            const val = node.value;
+            if (val) attrs += ` value="${val.slice(0, 40).replace(/"/g, "&quot;")}"`;
+          }
+          if (tag === "label") {
+            const forAttr = node.getAttribute("for");
+            if (forAttr) attrs += ` for="${forAttr}"`;
+          }
+          if (tag === "form") {
+            const action = node.getAttribute("action");
+            if (action) attrs += ` action="${action.slice(0, 60)}"`;
+          }
+
+          const landmark = LANDMARKS[tag] ? `\n<!-- ${LANDMARKS[tag]} -->\n` : "";
+          const childOutputs = Array.from(node.children)
+            .map(c => simplify(c, depth + 1))
+            .filter(Boolean);
+          const children = deduplicateChildren(childOutputs).join("");
+          return `${landmark}<${tag}${attrs}>${children}</${tag}>`;
+        }
+
+        return simplify(document.documentElement, 0);
+      },
+    });
+
+    const tokens = Math.round(domTree.length / 4);
+    console.log(`[Tweak] Context tokens: ${tokens}`);
+    console.log(`[Tweak] Page DOM:`, domTree);
+    resultEl.textContent = `~${tokens.toLocaleString()} tokens`;
+    resultEl.classList.remove("hidden");
+  } catch (err) {
+    showStatus("error", err.message || "Could not extract DOM.");
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Extract";
+  }
 }
 
 function setupFeedback() {
