@@ -197,11 +197,14 @@ async function handleApplyTweak({ prompt, tabId }) {
       ]);
       // Matches Tailwind/utility class prefixes — pruned to reduce token noise.
       const UTILITY_RE = /^(p[xytblr]?|m[xytblr]?|w-|h-|min-|max-|text-|font-|bg-|border|rounded|shadow|flex|grid|gap-|space-|leading-|tracking-|opacity-|overflow-|z-|absolute|relative|fixed|sticky|block|inline|hidden|transition|duration|cursor|transform|rotate|scale|translate|animate)-?\d*/;
+      // Matches generated/hashed class names: styled-components, Emotion, CSS Modules.
+      const GENERATED_RE = /^(sc-[a-zA-Z0-9]+|css-[a-zA-Z0-9]+|[a-z]{1,2}[A-Z][a-zA-Z]{3,}|_[a-zA-Z]+_[a-zA-Z0-9]+_\d+)$/;
 
       function pruneClasses(classStr) {
-        const kept = classStr.split(/\s+/).filter(c => !UTILITY_RE.test(c));
-        // Fallback: keep first 2 classes so the element is never classless.
-        return kept.length > 0 ? kept.join(" ") : classStr.split(/\s+/).slice(0, 2).join(" ");
+        const parts = classStr.split(/\s+/);
+        const kept = parts.filter(c => !UTILITY_RE.test(c) && !GENERATED_RE.test(c));
+        // Fallback: keep first 2 original classes so element is never classless.
+        return kept.length > 0 ? kept.join(" ") : parts.slice(0, 2).join(" ");
       }
 
       // A wrapper is a classless, ID-less, role-less element with exactly one element child.
@@ -212,14 +215,25 @@ async function handleApplyTweak({ prompt, tabId }) {
         return !node.id && !node.className && !node.getAttribute("role");
       }
 
-      // Collapse runs of 3+ consecutive identical sibling skeletons.
+      // Normalize a skeleton string for structural comparison: strip dynamic values
+      // (data-text, href, alt) so siblings sharing structure but differing in content
+      // (e.g. Reddit/Twitter feed posts) are recognized as duplicates.
+      function normalizeForDedup(s) {
+        return s
+          .replace(/data-text="[^"]*"/g, 'data-text=""')
+          .replace(/href="[^"]*"/g, 'href=""')
+          .replace(/alt="[^"]*"/g, 'alt=""');
+      }
+
+      // Collapse runs of 3+ consecutive structurally identical sibling skeletons.
       function deduplicateChildren(outputs) {
         const result = [];
         let i = 0;
         while (i < outputs.length) {
+          const normI = normalizeForDedup(outputs[i]);
           let j = i + 1;
-          while (j < outputs.length && outputs[j] === outputs[i]) j++;
-          result.push(outputs[i]);
+          while (j < outputs.length && normalizeForDedup(outputs[j]) === normI) j++;
+          result.push(outputs[i]); // keep first (has real text/href)
           if (j - i - 1 >= 2) result.push(`<!-- +${j - i - 1} similar -->`);
           i = j;
         }
@@ -230,6 +244,14 @@ async function handleApplyTweak({ prompt, tabId }) {
         if (depth > 20 || node.nodeType !== 1) return "";
         const tag = node.tagName.toLowerCase();
         if (SKIP.has(tag)) return "";
+
+        // Skip invisible nodes — user can't see or target them.
+        if (
+          node.hidden ||
+          node.getAttribute("aria-hidden") === "true" ||
+          node.style.display === "none" ||
+          node.style.visibility === "hidden"
+        ) return "";
 
         // Wrapper collapsing: pass through without incrementing depth.
         if (isWrapper(node)) return simplify(node.children[0], depth);
@@ -258,6 +280,30 @@ async function handleApplyTweak({ prompt, tabId }) {
         } else if (tag === "img") {
           const alt = node.getAttribute("alt");
           if (alt) attrs += ` alt="${alt.slice(0, 40).replace(/"/g, "&quot;")}"`;
+        }
+
+        // Interactive state — helps with dropdowns, tabs, checkboxes, toggles.
+        for (const a of ["aria-expanded", "aria-selected", "aria-checked", "aria-current"]) {
+          const v = node.getAttribute(a);
+          if (v !== null) attrs += ` ${a}="${v}"`;
+        }
+
+        // title — tooltip text; crucial for icon-only buttons.
+        const title = node.getAttribute("title");
+        if (title) attrs += ` title="${title.slice(0, 40).replace(/"/g, "&quot;")}"`;
+
+        // Form attributes — expose current value and label associations.
+        if (tag === "input" || tag === "textarea") {
+          const val = node.value; // live DOM property, reflects user input
+          if (val) attrs += ` value="${val.slice(0, 40).replace(/"/g, "&quot;")}"`;
+        }
+        if (tag === "label") {
+          const forAttr = node.getAttribute("for");
+          if (forAttr) attrs += ` for="${forAttr}"`;
+        }
+        if (tag === "form") {
+          const action = node.getAttribute("action");
+          if (action) attrs += ` action="${action.slice(0, 60)}"`;
         }
 
         const landmark = LANDMARKS[tag] ? `\n<!-- ${LANDMARKS[tag]} -->\n` : "";
