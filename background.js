@@ -185,24 +185,44 @@ async function handleApplyTweak({ prompt, tabId }) {
     func: () => {
       const SKIP = new Set(["script", "style", "svg", "noscript", "head"]);
       const ID_ATTRS = [
-        "id", "class", "aria-label", "data-testid", "role",
-        "name", "type", "slot", "placeholder",
+        "id",
+        "class",
+        "aria-label",
+        "data-testid",
+        "role",
+        "name",
+        "type",
+        "slot",
+        "placeholder",
       ];
       const LANDMARKS = {
-        main: "MAIN CONTENT", nav: "NAVIGATION", header: "HEADER",
-        footer: "FOOTER", aside: "SIDEBAR",
+        main: "MAIN CONTENT",
+        nav: "NAVIGATION",
+        header: "HEADER",
+        footer: "FOOTER",
+        aside: "SIDEBAR",
       };
       const WRAPPER_SKIP_TAGS = new Set([
-        "main", "article", "section", "nav", "header", "footer", "aside",
+        "main",
+        "article",
+        "section",
+        "nav",
+        "header",
+        "footer",
+        "aside",
       ]);
       // Matches Tailwind/utility class prefixes — pruned to reduce token noise.
-      const UTILITY_RE = /^(p[xytblr]?|m[xytblr]?|w-|h-|min-|max-|text-|font-|bg-|border|rounded|shadow|flex|grid|gap-|space-|leading-|tracking-|opacity-|overflow-|z-|absolute|relative|fixed|sticky|block|inline|hidden|transition|duration|cursor|transform|rotate|scale|translate|animate)-?\d*/;
+      const UTILITY_RE =
+        /^(p[xytblr]?|m[xytblr]?|w-|h-|min-|max-|text-|font-|bg-|border|rounded|shadow|flex|grid|gap-|space-|leading-|tracking-|opacity-|overflow-|z-|absolute|relative|fixed|sticky|block|inline|hidden|transition|duration|cursor|transform|rotate|scale|translate|animate)-?\d*/;
       // Matches generated/hashed class names: styled-components, Emotion, CSS Modules.
-      const GENERATED_RE = /^(sc-[a-zA-Z0-9]+|css-[a-zA-Z0-9]+|[a-z]{1,2}[A-Z][a-zA-Z]{3,}|_[a-zA-Z]+_[a-zA-Z0-9]+_\d+)$/;
+      const GENERATED_RE =
+        /^(sc-[a-zA-Z0-9]+|css-[a-zA-Z0-9]+|[a-z]{1,2}[A-Z][a-zA-Z]{3,}|_[a-zA-Z]+_[a-zA-Z0-9]+_\d+)$/;
 
       function pruneClasses(classStr) {
         const parts = classStr.split(/\s+/);
-        const kept = parts.filter(c => !UTILITY_RE.test(c) && !GENERATED_RE.test(c));
+        const kept = parts.filter(
+          (c) => !UTILITY_RE.test(c) && !GENERATED_RE.test(c),
+        );
         // Fallback: keep first 2 original classes so element is never classless.
         return kept.length > 0 ? kept.join(" ") : parts.slice(0, 2).join(" ");
       }
@@ -232,7 +252,8 @@ async function handleApplyTweak({ prompt, tabId }) {
         while (i < outputs.length) {
           const normI = normalizeForDedup(outputs[i]);
           let j = i + 1;
-          while (j < outputs.length && normalizeForDedup(outputs[j]) === normI) j++;
+          while (j < outputs.length && normalizeForDedup(outputs[j]) === normI)
+            j++;
           result.push(outputs[i]); // keep first (has real text/href)
           if (j - i - 1 >= 2) result.push(`<!-- +${j - i - 1} similar -->`);
           i = j;
@@ -251,7 +272,8 @@ async function handleApplyTweak({ prompt, tabId }) {
           node.getAttribute("aria-hidden") === "true" ||
           node.style.display === "none" ||
           node.style.visibility === "hidden"
-        ) return "";
+        )
+          return "";
 
         // Wrapper collapsing: pass through without incrementing depth.
         if (isWrapper(node)) return simplify(node.children[0], depth);
@@ -266,8 +288,8 @@ async function handleApplyTweak({ prompt, tabId }) {
         // Emit first 40 chars of direct (non-descendant) text so the LLM can
         // identify elements by visible label without targeting data-text in selectors.
         const directText = Array.from(node.childNodes)
-          .filter(n => n.nodeType === 3)
-          .map(n => n.textContent.trim())
+          .filter((n) => n.nodeType === 3)
+          .map((n) => n.textContent.trim())
           .join(" ")
           .slice(0, 40)
           .replace(/"/g, "&quot;");
@@ -279,23 +301,31 @@ async function handleApplyTweak({ prompt, tabId }) {
           if (href) attrs += ` href="${href.slice(0, 60)}"`;
         } else if (tag === "img") {
           const alt = node.getAttribute("alt");
-          if (alt) attrs += ` alt="${alt.slice(0, 40).replace(/"/g, "&quot;")}"`;
+          if (alt)
+            attrs += ` alt="${alt.slice(0, 40).replace(/"/g, "&quot;")}"`;
         }
 
         // Interactive state — helps with dropdowns, tabs, checkboxes, toggles.
-        for (const a of ["aria-expanded", "aria-selected", "aria-checked", "aria-current"]) {
+        for (const a of [
+          "aria-expanded",
+          "aria-selected",
+          "aria-checked",
+          "aria-current",
+        ]) {
           const v = node.getAttribute(a);
           if (v !== null) attrs += ` ${a}="${v}"`;
         }
 
         // title — tooltip text; crucial for icon-only buttons.
         const title = node.getAttribute("title");
-        if (title) attrs += ` title="${title.slice(0, 40).replace(/"/g, "&quot;")}"`;
+        if (title)
+          attrs += ` title="${title.slice(0, 40).replace(/"/g, "&quot;")}"`;
 
         // Form attributes — expose current value and label associations.
         if (tag === "input" || tag === "textarea") {
           const val = node.value; // live DOM property, reflects user input
-          if (val) attrs += ` value="${val.slice(0, 40).replace(/"/g, "&quot;")}"`;
+          if (val)
+            attrs += ` value="${val.slice(0, 40).replace(/"/g, "&quot;")}"`;
         }
         if (tag === "label") {
           const forAttr = node.getAttribute("for");
@@ -308,7 +338,7 @@ async function handleApplyTweak({ prompt, tabId }) {
 
         const landmark = LANDMARKS[tag] ? `\n<!-- ${LANDMARKS[tag]} -->\n` : "";
         const childOutputs = Array.from(node.children)
-          .map(c => simplify(c, depth + 1))
+          .map((c) => simplify(c, depth + 1))
           .filter(Boolean);
         const children = deduplicateChildren(childOutputs).join("");
         return `${landmark}<${tag}${attrs}>${children}</${tag}>`;
@@ -338,7 +368,14 @@ async function handleApplyTweak({ prompt, tabId }) {
   await injectTweak(tabId, { id, type, code });
   const { tweaks = {} } = await chrome.storage.local.get("tweaks");
   const domainTweaks = tweaks[domain] || [];
-  domainTweaks.push({ id, prompt, code, type, enabled: true, createdAt: Date.now() });
+  domainTweaks.push({
+    id,
+    prompt,
+    code,
+    type,
+    enabled: true,
+    createdAt: Date.now(),
+  });
   tweaks[domain] = domainTweaks;
   await chrome.storage.local.set({ tweaks });
 
@@ -443,7 +480,10 @@ JS rules:
 // Parse the LLM response into { type, code }. Handles JSON with optional markdown fences.
 // Falls back to treating the raw text as CSS if JSON parsing fails.
 function parseResponse(raw) {
-  const stripped = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "").trim();
+  const stripped = raw
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/, "")
+    .trim();
   let parsed;
   try {
     parsed = JSON.parse(stripped);
@@ -451,7 +491,11 @@ function parseResponse(raw) {
     // Fallback: assume raw CSS
     return { type: "css", code: raw.trim() };
   }
-  if (parsed && (parsed.type === "css" || parsed.type === "js") && typeof parsed.code === "string") {
+  if (
+    parsed &&
+    (parsed.type === "css" || parsed.type === "js") &&
+    typeof parsed.code === "string"
+  ) {
     return parsed;
   }
   return { type: "css", code: raw.trim() };
@@ -478,7 +522,12 @@ async function injectTweak(tabId, tweak) {
   }
 }
 
-function buildUserContent(outerHTML, prompt, elementContext = null, pageUrl = null) {
+function buildUserContent(
+  outerHTML,
+  prompt,
+  elementContext = null,
+  pageUrl = null,
+) {
   let content;
   let contextLabel;
   let contextValue;
@@ -546,7 +595,13 @@ async function callAnthropicAPI(
   return parseResponse(data.content[0].text);
 }
 
-async function callCodexAPI(apiKey, outerHTML, prompt, elementContext = null, pageUrl = null) {
+async function callCodexAPI(
+  apiKey,
+  outerHTML,
+  prompt,
+  elementContext = null,
+  pageUrl = null,
+) {
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {

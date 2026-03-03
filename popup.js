@@ -109,8 +109,7 @@ async function startPicker() {
 
   const pickBtn = document.getElementById("pick-btn");
   pickBtn.disabled = true;
-  pickBtn.querySelector(".btn-sublabel").textContent = "";
-  pickBtn.childNodes[0].textContent = "Selecting...";
+  pickBtn.textContent = "Selecting...";
 
   await chrome.runtime.sendMessage({
     type: "START_PICKER",
