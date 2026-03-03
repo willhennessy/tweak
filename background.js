@@ -64,6 +64,11 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     return false;
   }
 
+  if (message.type === "LOG") {
+    console.log(...message.args);
+    return false;
+  }
+
   if (message.type === "INJECT_TWEAK") {
     const { tabId, tweak } = message;
     injectTweak(tabId, tweak)
@@ -112,6 +117,8 @@ async function handlePickerResult(
   }
 
   setBadge(tabId, "...", "#3b82f6");
+
+  console.log("[Tweak] Page DOM:", simplifiedHTML);
 
   try {
     const tab = await chrome.tabs.get(tabId);
@@ -348,6 +355,8 @@ async function handleApplyTweak({ prompt, tabId }) {
     },
   });
 
+  console.log("[Tweak] Page DOM:", domTree);
+
   const tab = await chrome.tabs.get(tabId);
   const domain = new URL(tab.url).hostname;
 
@@ -545,13 +554,13 @@ function buildUserContent(
           "\n<!-- DOM truncated for length -->"
         : outerHTML;
     content = `${urlLine}Page DOM:\n${truncatedHTML}\n\nUser request: ${prompt}`;
-    contextLabel = "Page DOM:";
-    contextValue = truncatedHTML;
+    contextLabel = "apply to full page";
+    contextValue = null;
   }
   const estTokens = Math.round(content.length / 4);
   console.log(`[Tweak] User request: ${prompt}`);
   console.log(`[Tweak] Context tokens: ${estTokens}`);
-  console.log(`[Tweak] ${contextLabel}`, contextValue);
+  console.log(`[Tweak] ${contextLabel}`);
   return content;
 }
 

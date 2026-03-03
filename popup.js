@@ -67,6 +67,8 @@ async function submitTweak() {
   const prompt = input.value.trim();
   if (!prompt) return;
 
+  chrome.runtime.sendMessage({ type: "LOG", args: [`[Tweak] User request: ${prompt}`] });
+
   const btn = document.getElementById("apply-btn");
   btn.disabled = true;
   const { defaultProvider = "anthropic" } = await chrome.storage.local.get("defaultProvider");
@@ -107,6 +109,8 @@ async function startPicker() {
   const prompt = input.value.trim();
   if (!prompt) return;
 
+  chrome.runtime.sendMessage({ type: "LOG", args: [`[Tweak] User request: ${prompt}`] });
+
   const pickBtn = document.getElementById("pick-btn");
   pickBtn.disabled = true;
   pickBtn.textContent = "Selecting...";
@@ -121,6 +125,8 @@ async function startPicker() {
 }
 
 async function extractDOM() {
+  chrome.runtime.sendMessage({ type: "LOG", args: ["[Tweak] Extract DOM"] });
+
   const btn = document.getElementById("extract-btn");
   const resultEl = document.getElementById("extract-result");
   btn.disabled = true;
@@ -250,8 +256,8 @@ async function extractDOM() {
     });
 
     const tokens = Math.round(domTree.length / 4);
-    console.log(`[Tweak] Context tokens: ${tokens}`);
-    console.log(`[Tweak] Page DOM:`, domTree);
+    chrome.runtime.sendMessage({ type: "LOG", args: [`[Tweak] Context tokens: ${tokens}`] });
+    chrome.runtime.sendMessage({ type: "LOG", args: [`[Tweak] Page DOM:`, domTree] });
     resultEl.textContent = `~${tokens.toLocaleString()} tokens`;
     resultEl.classList.remove("hidden");
   } catch (err) {
