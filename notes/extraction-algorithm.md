@@ -4,11 +4,11 @@
 
 The extension uses a `simplify(node, depth)` recursive function that walks the live DOM and produces a compact HTML skeleton. It runs via `chrome.scripting.executeScript` so it has direct DOM access inside the page context. There are three separate extraction paths:
 
-| Path | Where | Depth cap | Scope |
-|---|---|---|---|
-| Apply to page | `background.js handleApplyTweak` | 20 | `document.documentElement` |
-| Extract button | `popup.js extractDOM` | 20 | `document.documentElement` |
-| Select region | `content.js extractElement` | 5 | User-selected element |
+| Path           | Where                            | Depth cap | Scope                      |
+| -------------- | -------------------------------- | --------- | -------------------------- |
+| Apply to page  | `background.js handleApplyTweak` | 20        | `document.documentElement` |
+| Extract button | `popup.js extractDOM`            | 20        | `document.documentElement` |
+| Select region  | `content.js extractElement`      | 5         | User-selected element      |
 
 ### What the algorithm does
 
@@ -21,6 +21,7 @@ The extension uses a `simplify(node, depth)` recursive function that walks the l
 **Attribute whitelist** — Only serializes: `id`, `class`, `aria-label`, `data-testid`, `role`, `name`, `type`, `slot`, `placeholder`. Everything else (event handlers, `style`, `data-*`, etc.) is dropped.
 
 **Class pruning** — Two regexes strip noisy classes before serialization:
+
 - `UTILITY_RE`: Tailwind/utility prefixes (`px-`, `text-`, `bg-`, `flex`, `grid`, etc.)
 - `GENERATED_RE`: Hashed/generated names from styled-components (`sc-*`), Emotion (`css-*`), and CSS Modules (`_name_hash_N`)
 - Fallback: if all classes are pruned, keeps the first two originals so the element is never classless.
@@ -39,10 +40,11 @@ The extension uses a `simplify(node, depth)` recursive function that walks the l
 
 ### Token budget (current)
 
-| Path | Typical input tokens |
-|---|---|
-| Apply to page (Reddit) | ~6,000–9,000 |
-| Apply to page (simple page) | ~1,000–3,000 |
+| Path                        | Typical input tokens |
+| --------------------------- | -------------------- |
+| Apply to page (Reddit)      | ~6,000–9,000         |
+| Apply to page (simple page) | ~1,000–3,000         |
+| Select region               | ~75–200             age) | ~1,000–3,000 |
 | Select region | ~75–200 |
 
 ---
@@ -66,8 +68,6 @@ The extension uses a `simplify(node, depth)` recursive function that walks the l
 ## What did not work
 
 **Code is duplicated across three files.** The full-page simplify function exists verbatim in `background.js` and `popup.js`. The element picker in `content.js` is a stripped-down third copy. `domUtils.js` was created as a shared utility module but is untracked and never loaded — the manifest does not include it and no file references it. Keeping three copies in sync is error-prone.
-
-**`content.js extractElement` never received the Smart Skeleton upgrades.** The element picker still uses the original basic algorithm with no text hints, no class pruning, no wrapper collapsing, and no deduplication. These would all help — especially text hints, which are arguably more valuable at the element level where the LLM needs to write very precise selectors.
 
 **Class pruning regex is heuristic and over-prunes.** `GENERATED_RE` includes `[a-z]{1,2}[A-Z][a-zA-Z]{3,}` to catch styled-components mangled names, but this pattern also matches intentional camelCase class names like `pageTitle`, `navItem`, or `userCard`. The result is that on some sites, meaningful semantic classes get dropped and the LLM is left with fewer identification signals.
 
