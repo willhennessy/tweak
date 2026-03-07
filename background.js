@@ -488,6 +488,7 @@ const SYSTEM_PROMPT = `You are a browser automation expert. The user is viewing 
 
 You will be given either a compact DOM tree or a specific target element selected by the user. You may also receive a screenshot of the webpage; this screenshot can help locate the element the user is referring to.
 
+<output_format>
 Respond with a single JSON object — no prose, no markdown fences:
 { "type": "css", "code": "..." }
 or
@@ -496,18 +497,21 @@ or
 Choose the type based on the request:
 - Use "css" for visual changes: hiding, resizing, recoloring, repositioning elements
 - Use "js" for DOM mutations: adding elements, restructuring content, building interactive UI (tabs, toggles, etc.)
+</output_format>
 
-CSS rules:
-- Use the exact tag names, IDs, and classes you see in the provided DOM — do not guess or invent selectors
+<css_rules>
+- Use the exact tag names, IDs, and classes you see in the provided DOM. Invented selectors will silently fail to match anything.
 - Prefer the most specific selector that uniquely identifies the element (e.g. custom element tag names like <recent-posts>, or #id selectors)
 - When a specific target element is provided with a selector path, use that element's tag name, ID, or classes directly. The selectorPath shows its position in the DOM for context.
-- Use !important on every property to override existing styles
-- CSS cannot select by text content — use tag names, IDs, classes, and attribute selectors instead
-- data-text attributes in the DOM are hints showing visible text for your reference only — never use data-text in generated selectors
+- Use !important on every property so injected styles override the page's own stylesheet rules
+- Selectors must use tag names, IDs, classes, and attribute selectors. CSS cannot select by text content.
+- data-text attributes in the DOM are hints showing visible text for your reference only. Write selectors using tag names, IDs, and classes instead.
+</css_rules>
 
-JS rules:
+<js_rules>
 - Write self-contained code that operates on document (no imports, no require)
-- Use standard DOM APIs only`;
+- Use standard DOM APIs only
+</js_rules>`;
 
 // Parse the LLM response into { type, code }. Handles JSON with optional markdown fences.
 // Falls back to treating the raw text as CSS if JSON parsing fails.
@@ -566,7 +570,7 @@ function buildUserContent(
   const urlLine = pageUrl ? `Page URL: ${pageUrl}\n` : "";
   if (elementContext) {
     const { simplifiedHTML, selectorPath } = elementContext;
-    content = `${urlLine}Target element (user-selected):\nSelector path: ${selectorPath}\n${simplifiedHTML}\n\nUser request: ${prompt}`;
+    content = `<target_element>\nSelector path: ${selectorPath}\n${simplifiedHTML}\n</target_element>\n\n${urlLine}<user_request>${prompt}</user_request>`;
     contextLabel = "Target element: user-selected,";
     contextValue = simplifiedHTML;
   } else {
@@ -576,7 +580,7 @@ function buildUserContent(
         ? outerHTML.slice(0, maxDOMLength) +
           "\n<!-- DOM truncated for length -->"
         : outerHTML;
-    content = `${urlLine}Page DOM:\n${truncatedHTML}\n\nUser request: ${prompt}`;
+    content = `<dom>\n${truncatedHTML}\n</dom>\n\n${urlLine}<user_request>${prompt}</user_request>`;
     contextLabel = "apply to full page";
     contextValue = null;
   }
