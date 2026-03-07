@@ -543,7 +543,7 @@ function buildUserContent(
   const urlLine = pageUrl ? `Page URL: ${pageUrl}\n` : "";
   if (elementContext) {
     const { simplifiedHTML, selectorPath } = elementContext;
-    content = `${urlLine}Target element (user-selected):\nSelector path: ${selectorPath}\n${simplifiedHTML}\n\nUser request: ${prompt}`;
+    content = `Target element (user-selected):\nSelector path: ${selectorPath}\n${simplifiedHTML}\n\n${urlLine}User request: ${prompt}`;
     contextLabel = "Target element: user-selected,";
     contextValue = simplifiedHTML;
   } else {
@@ -553,7 +553,7 @@ function buildUserContent(
         ? outerHTML.slice(0, maxDOMLength) +
           "\n<!-- DOM truncated for length -->"
         : outerHTML;
-    content = `${urlLine}Page DOM:\n${truncatedHTML}\n\nUser request: ${prompt}`;
+    content = `Page DOM:\n${truncatedHTML}\n\n${urlLine}User request: ${prompt}`;
     contextLabel = "apply to full page";
     contextValue = null;
   }
