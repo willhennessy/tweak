@@ -123,6 +123,7 @@ async function handlePickerResult(
   try {
     const tab = await chrome.tabs.get(tabId);
     const domain = new URL(tab.url).hostname;
+    const pageScreenshot = await captureTabScreenshot(tab.windowId);
 
     const { type, code } = await callAPIWithFallback(
       anthropicApiKey,
@@ -132,6 +133,7 @@ async function handlePickerResult(
       prompt,
       { simplifiedHTML, selectorPath },
       tab.url,
+      pageScreenshot,
     );
 
     console.log("[Tweak] Output:", { type, code });
@@ -359,6 +361,7 @@ async function handleApplyTweak({ prompt, tabId }) {
 
   const tab = await chrome.tabs.get(tabId);
   const domain = new URL(tab.url).hostname;
+  const pageScreenshot = await captureTabScreenshot(tab.windowId);
 
   const { type, code } = await callAPIWithFallback(
     anthropicApiKey,
@@ -368,6 +371,7 @@ async function handleApplyTweak({ prompt, tabId }) {
     prompt,
     null,
     tab.url,
+    pageScreenshot,
   );
 
   const id = crypto.randomUUID();
@@ -402,6 +406,7 @@ async function callAPIWithFallback(
   prompt,
   elementContext = null,
   pageUrl = null,
+  pageScreenshot = null,
 ) {
   const primary = defaultProvider === "codex" ? "codex" : "anthropic";
   const fallback = primary === "anthropic" ? "codex" : "anthropic";
@@ -418,6 +423,7 @@ async function callAPIWithFallback(
         prompt,
         elementContext,
         pageUrl,
+        pageScreenshot,
       );
     } catch (err) {
       console.warn(`[Tweak] ${primary} API failed:`, err.message);
@@ -430,6 +436,7 @@ async function callAPIWithFallback(
           prompt,
           elementContext,
           pageUrl,
+          pageScreenshot,
         );
       }
       throw err;
@@ -444,6 +451,7 @@ async function callAPIWithFallback(
     prompt,
     elementContext,
     pageUrl,
+    pageScreenshot,
   );
 }
 
@@ -454,16 +462,31 @@ async function callAPI(
   prompt,
   elementContext = null,
   pageUrl = null,
+  pageScreenshot = null,
 ) {
   if (provider === "anthropic") {
-    return callAnthropicAPI(apiKey, outerHTML, prompt, elementContext, pageUrl);
+    return callAnthropicAPI(
+      apiKey,
+      outerHTML,
+      prompt,
+      elementContext,
+      pageUrl,
+      pageScreenshot,
+    );
   }
-  return callCodexAPI(apiKey, outerHTML, prompt, elementContext, pageUrl);
+  return callCodexAPI(
+    apiKey,
+    outerHTML,
+    prompt,
+    elementContext,
+    pageUrl,
+    pageScreenshot,
+  );
 }
 
 const SYSTEM_PROMPT = `You are a browser automation expert. The user is viewing a third-party webpage and wants a change applied via injected CSS or JS.
 
-You will be given either a compact DOM tree or a specific target element selected by the user. Use it to find the exact element to target.
+You will be given either a compact DOM tree or a specific target element selected by the user. You may also receive a screenshot of the webpage; this screenshot can help locate the element the user is referring to.
 
 Respond with a single JSON object — no prose, no markdown fences:
 { "type": "css", "code": "..." }
@@ -570,7 +593,21 @@ async function callAnthropicAPI(
   prompt,
   elementContext = null,
   pageUrl = null,
+  pageScreenshot = null,
 ) {
+  const userContent = buildUserContent(outerHTML, prompt, elementContext, pageUrl);
+  const anthropicContent = [{ type: "text", text: userContent }];
+  if (pageScreenshot) {
+    anthropicContent.push({
+      type: "image",
+      source: {
+        type: "base64",
+        media_type: "image/png",
+        data: pageScreenshot.replace(/^data:image\/png;base64,/, ""),
+      },
+    });
+  }
+
   const response = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: {
@@ -586,7 +623,7 @@ async function callAnthropicAPI(
       messages: [
         {
           role: "user",
-          content: buildUserContent(outerHTML, prompt, elementContext, pageUrl),
+          content: anthropicContent,
         },
       ],
     }),
@@ -610,7 +647,17 @@ async function callCodexAPI(
   prompt,
   elementContext = null,
   pageUrl = null,
+  pageScreenshot = null,
 ) {
+  const userContent = buildUserContent(outerHTML, prompt, elementContext, pageUrl);
+  const codexContent = [{ type: "text", text: userContent }];
+  if (pageScreenshot) {
+    codexContent.push({
+      type: "image_url",
+      image_url: { url: pageScreenshot },
+    });
+  }
+
   const response = await fetch("https://api.openai.com/v1/chat/completions", {
     method: "POST",
     headers: {
@@ -627,7 +674,7 @@ async function callCodexAPI(
         },
         {
           role: "user",
-          content: buildUserContent(outerHTML, prompt, elementContext, pageUrl),
+          content: codexContent,
         },
       ],
     }),
@@ -643,6 +690,18 @@ async function callCodexAPI(
 
   const data = await response.json();
   return parseResponse(data.choices[0].message.content);
+}
+
+async function captureTabScreenshot(windowId) {
+  try {
+    const dataUrl = await chrome.tabs.captureVisibleTab(windowId, {
+      format: "png",
+    });
+    return dataUrl || null;
+  } catch (err) {
+    console.warn("[Tweak] Failed to capture screenshot:", err.message);
+    return null;
+  }
 }
 
 async function saveRecentPrompt(prompt) {
