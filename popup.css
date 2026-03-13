@@ -50,12 +50,6 @@
   --status-error-text:      #D93025;
   --status-error-border:    #F5C6C2;
 
-  /* Tabs */
-  --tab-border:          #DADCE0;
-  --tab-text:            #5F6368;
-  --tab-active-text:     #202124;
-  --tab-active-underline:#4C8BF5;
-
   /* List items */
   --item-bg:             #FFFFFF;
   --item-border:         #DADCE0;
@@ -68,11 +62,6 @@
   --toggle-thumb:         #FFFFFF;
   --toggle-checked-track: #1DA462;
   --toggle-checked-thumb: #FFFFFF;
-
-  /* Recent prompts */
-  --recent-text:       #5F6368;
-  --recent-hover-bg:   #F1F3F4;
-  --recent-hover-text: #202124;
 
   /* Misc */
   --empty-text:        #BABCBE;
@@ -107,10 +96,6 @@
     --status-error-text:      #F28B82;
     --status-error-border:    #5A1A1A;
 
-    --tab-border:          #3C4043;
-    --tab-text:            #9AA0A6;
-    --tab-active-text:     #E8EAED;
-
     --item-bg:             #292A2D;
     --item-border:         #3C4043;
     --item-hover-border:   #5F6368;
@@ -119,10 +104,6 @@
 
     --toggle-track:        #5F6368;
     --toggle-thumb:        #BABCBE;
-
-    --recent-text:         #9AA0A6;
-    --recent-hover-bg:     #35363A;
-    --recent-hover-text:   #E8EAED;
 
     --empty-text:          #5F6368;
     --options-btn:         #9AA0A6;
@@ -368,45 +349,6 @@ textarea::placeholder {
   border: 1px solid var(--status-error-border);
 }
 
-/* ── Tabs ────────────────────────────────────────────────────────── */
-.tabs {
-  display: flex;
-  gap: 0;
-  border-bottom: 1px solid var(--tab-border);
-}
-
-.tab-btn {
-  background: none;
-  border: none;
-  border-bottom: 2px solid transparent;
-  color: var(--tab-text);
-  font-size: 12px;
-  font-weight: 500;
-  padding: 6px 12px;
-  cursor: pointer;
-  transition:
-    color 0.15s,
-    border-color 0.15s;
-  margin-bottom: -1px;
-}
-
-.tab-btn:hover {
-  color: var(--tab-active-text);
-}
-
-.tab-btn.active {
-  color: var(--tab-active-text);
-  border-bottom-color: var(--tab-active-underline);
-}
-
-.tab-content {
-  min-height: 60px;
-}
-
-.tab-content.hidden {
-  display: none;
-}
-
 /* ── Lists ───────────────────────────────────────────────────────── */
 .item-list {
   list-style: none;
@@ -425,27 +367,6 @@ textarea::placeholder {
 
 .empty-msg.hidden {
   display: none;
-}
-
-/* Recent prompt items */
-.recent-item {
-  padding: 7px 10px;
-  border-radius: 5px;
-  cursor: pointer;
-  color: var(--recent-text);
-  font-size: 12px;
-  line-height: 1.3;
-  transition:
-    background 0.1s,
-    color 0.1s;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.recent-item:hover {
-  background: var(--recent-hover-bg);
-  color: var(--recent-hover-text);
 }
 
 /* Tweak items */
